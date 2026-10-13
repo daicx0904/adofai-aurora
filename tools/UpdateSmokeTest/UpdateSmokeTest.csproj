@@ -23,6 +23,7 @@
     <Compile Include="..\..\src\AdofaiModManager\Services\KernelService.cs" />
     <Compile Include="..\..\src\AdofaiModManager\Services\GitHubUpdateService.cs" />
     <Compile Include="..\..\src\AdofaiModManager\Services\UpdateSourceStore.cs" />
+    <Compile Include="..\..\src\AdofaiModManager\Services\VersionScheme.cs" />
     <Compile Include="..\..\src\AdofaiModManager\Models\InstalledMod.cs" />
     <Compile Include="..\..\src\AdofaiModManager\Models\ModInfoJson.cs" />
     <Compile Include="..\..\src\AdofaiModManager\Models\KernelManifest.cs" />

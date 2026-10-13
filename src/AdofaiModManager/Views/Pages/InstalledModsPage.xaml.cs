@@ -371,7 +371,7 @@ public partial class InstalledModsPage : Page
         }
 
         // 单条检查也走"资源站 + GitHub 双来源"，与整体检查保持一致
-        var result = await AppServices.Updates.CheckOneAsync(mod);
+        var result = await AppServices.Updates.CheckOneAsync(mod, forceRefresh: true);
         Report(result.Success, result.Message);
         Reload();
     }
@@ -405,7 +405,7 @@ public partial class InstalledModsPage : Page
                 StatusBar.IsOpen = true;
             }, Dispatcher);
 
-            await AppServices.Updates.CheckAllAsync(mods, progress);
+            await AppServices.Updates.CheckAllAsync(mods, progress, forceRefresh: true);
 
             var updatable = mods.Count(m => AppServices.Updates.Get(m) is { Success: true, UpdateAvailable: true });
             Report(true, $"检查完成：{mods.Count} 个 mod，{updatable} 个可更新。");

@@ -2,6 +2,35 @@ using System.IO;
 using AdofaiModManager.Models;
 using AdofaiModManager.Services;
 
+// ---- 版本比较自检（回归：26w40c → 26w42a 曾因只取第一段数字而漏报）----
+var versionChecks = new (string Local, string Remote, bool ExpectNewer)[]
+{
+    ("26w40c", "26w42a", true),
+    ("26w42a", "26w40c", false),
+    ("26w40c", "26w40c", false),
+    ("26w40b", "26w40c", true),
+    ("2.4.1", "2.4.2", true),
+    ("2.4.1", "2.4.1", false),
+    ("1.9.0", "1.10.0", true),
+};
+var versionBad = 0;
+foreach (var (local, remote, expect) in versionChecks)
+{
+    var actual = VersionScheme.IsRemoteNewer(local, remote);
+    var ok = actual == expect;
+    if (!ok)
+    {
+        versionBad++;
+    }
+
+    Console.WriteLine($"  版本比较 {local,-10} vs {remote,-10} 期望 {(expect ? "有更新" : "无更新")} 实得 {(actual ? "有更新" : "无更新")} {(ok ? "OK" : "FAIL")}");
+}
+
+Console.WriteLine(versionBad == 0
+    ? $"版本比较自检通过（{versionChecks.Length} 项）"
+    : $"警告：版本比较自检失败 {versionBad} 项");
+Console.WriteLine();
+
 var gamePath = args.Length > 0 ? args[0] : @"D:\SteamLibrary\steamapps\common\A Dance of Fire and Ice";
 
 var modService = new ModService(gamePath);

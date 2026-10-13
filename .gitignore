@@ -18,3 +18,6 @@ artifacts/
 # 本地敏感信息（正常情况下 key 存在 %AppData%，这里兜底）
 settings.local.json
 *.secret.json
+
+# 本地多语言构建产物（个人版，不入库）
+dist-i18n/

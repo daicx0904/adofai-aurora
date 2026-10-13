@@ -42,6 +42,37 @@ public static class ApiCache
         }
     }
 
+    /// <summary>
+    /// 清空磁盘缓存（手动「检查全部更新」时用，保证这次真的联网，
+    /// 而不是几秒内全部命中缓存、看起来像"没检查"）。
+    /// </summary>
+    public static void Clear()
+    {
+        try
+        {
+            if (!Directory.Exists(AppPaths.ApiCacheDirectory))
+            {
+                return;
+            }
+
+            foreach (var file in Directory.EnumerateFiles(AppPaths.ApiCacheDirectory))
+            {
+                try
+                {
+                    File.Delete(file);
+                }
+                catch
+                {
+                    // 个别文件删不掉就算了
+                }
+            }
+        }
+        catch
+        {
+            // 清缓存失败不影响功能
+        }
+    }
+
     /// <summary>按参数生成一个稳定的缓存键。</summary>
     public static string Key(string prefix, params string?[] parts) =>
         prefix + "-" + Hash(string.Join('|', parts));

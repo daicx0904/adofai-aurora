@@ -82,6 +82,15 @@ public sealed class GitHubUpdateService
         return ok;
     }
 
+    /// <summary>让下一次探测重新联网（手动检查更新时用）。</summary>
+    public static void InvalidateProbe()
+    {
+        lock (ProbeLock)
+        {
+            _probeTime = DateTime.MinValue;
+        }
+    }
+
     /// <summary>解析某个 mod 的更新来源（手动指定优先）。</summary>
     public UpdateSource ResolveSource(InstalledMod mod)
     {

@@ -123,6 +123,24 @@ public sealed class UpdateCenter
     }
 
     /// <summary>
+    /// 手动检查更新时用：把各层缓存清掉，保证这次真的联网。
+    /// 覆盖：本中心的内存映射、接口的磁盘缓存、第三方源的进程内缓存、GitHub 探测结果。
+    /// 否则点第二次会全部命中缓存，秒回"检查完成"，看起来像没检查。
+    /// </summary>
+    public void InvalidateCaches()
+    {
+        _siteMap.Clear();
+        _siteMapTime = DateTime.MinValue;
+
+        _remoteMap.Clear();
+        _remoteMapTime = DateTime.MinValue;
+
+        ApiCache.Clear();
+        SourceCache.Clear();
+        GitHubUpdateService.InvalidateProbe();
+    }
+
+    /// <summary>
     /// 拉取/刷新「资源站 mod 映射」。10 分钟内重复调用直接返回。
     /// 映射更新后会触发 Changed，让页面刷新（显示更新源与图标）。
     /// </summary>
@@ -166,10 +184,17 @@ public sealed class UpdateCenter
     public async Task CheckAllAsync(
         IReadOnlyList<InstalledMod> mods,
         IProgress<string>? progress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool forceRefresh = false)
     {
         var github = new GitHubUpdateService(AppServices.UpdateSources);
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+        if (forceRefresh)
+        {
+            InvalidateCaches();
+            AppPaths.AppendDebugLog("[check] 手动检查：已清空缓存，强制联网");
+        }
 
         AppPaths.AppendDebugLog($"[check] 开始检查 {mods.Count} 个 mod");
 
@@ -199,8 +224,13 @@ public sealed class UpdateCenter
     }
 
     /// <summary>只检查一个 mod（「已安装」页的单条「检查更新」按钮用）。</summary>
-    public async Task<UpdateCheckResult> CheckOneAsync(InstalledMod mod, CancellationToken ct = default)
+    public async Task<UpdateCheckResult> CheckOneAsync(InstalledMod mod, CancellationToken ct = default, bool forceRefresh = false)
     {
+        if (forceRefresh)
+        {
+            InvalidateCaches();
+        }
+
         var github = new GitHubUpdateService(AppServices.UpdateSources);
         var gitHubState = await ResolveGitHubStateAsync(ct);
 
@@ -382,10 +412,8 @@ public sealed class UpdateCenter
                 continue;
             }
 
-            // 写法一致就逐段比；写法不同只比第一个数字段（宁可少报也不误报）
-            var newer = VersionScheme.Same(mod.Version, remoteMod.LatestVersion)
-                ? KernelService.CompareVersions(remoteMod.LatestVersion, mod.Version) > 0
-                : VersionScheme.CompareFirstNumber(remoteMod.LatestVersion, mod.Version) > 0;
+            // 写法相同走逐片段比较（「年份+周+字母」这类写法才不会漏报）；写法不同只比第一个数字段
+            var newer = VersionScheme.Compare(remoteMod.LatestVersion, mod.Version) > 0;
 
             var result = new UpdateCheckResult
             {
@@ -401,7 +429,7 @@ public sealed class UpdateCenter
                     : $"{source.DisplayName} 已是最新（{remoteMod.LatestVersion}）",
             };
 
-            if (best is null || KernelService.CompareVersions(result.RemoteVersion, best.RemoteVersion) > 0)
+            if (best is null || VersionScheme.Compare(result.RemoteVersion, best.RemoteVersion) > 0)
             {
                 best = result;
             }
@@ -418,7 +446,7 @@ public sealed class UpdateCenter
             return a.UpdateAvailable ? a : b;
         }
 
-        return KernelService.CompareVersions(b.RemoteVersion, a.RemoteVersion) > 0 ? b : a;
+        return VersionScheme.Compare(b.RemoteVersion, a.RemoteVersion) > 0 ? b : a;
     }
 
     /// <summary>把"已安装 mod"转成资源站侧的检查结果（没有匹配则为 null）。</summary>
@@ -432,7 +460,7 @@ public sealed class UpdateCenter
         // 写法一致：直接逐段比较版本号
         if (VersionScheme.Same(mod.Version, site.Version))
         {
-            var newer = KernelService.CompareVersions(site.Version, mod.Version) > 0;
+            var newer = VersionScheme.Compare(site.Version, mod.Version) > 0;
             return BuildSiteResult(mod, site, newer, schemeMismatch: false);
         }
 
@@ -547,7 +575,7 @@ public sealed class UpdateCenter
     {
         if (site is not null && gitHub is not null)
         {
-            var cmp = KernelService.CompareVersions(gitHub.RemoteVersion, site.RemoteVersion);
+            var cmp = VersionScheme.Compare(gitHub.RemoteVersion, site.RemoteVersion);
 
             if (cmp > 0)
             {

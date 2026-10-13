@@ -394,6 +394,16 @@ public static class SourceCache
         DiskWrite?.Invoke(key, body);
     }
 
+    /// <summary>清空进程内缓存（磁盘缓存由 ApiCache.Clear 负责）。</summary>
+    public static void Clear()
+    {
+        lock (Memory)
+        {
+            Memory.Clear();
+            Stale.Clear();
+        }
+    }
+
     private static void Remember(string key, string body, TimeSpan ttl)
     {
         lock (Memory)
