@@ -261,7 +261,7 @@ public static class SourceHttp
 
         var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(60) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd(
-            "AdofaiModManager/0.1.5 (+https://github.com/lishangi688/adofai-mod-manager)");
+            "Aurora/0.1.6 (+https://github.com/lishangi688/adofai-aurora)");
         return client;
     }
 

@@ -1,9 +1,9 @@
-﻿<ui:FluentWindow x:Class="AdofaiModManager.MainWindow"
+<ui:FluentWindow x:Class="AdofaiModManager.MainWindow"
                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                 xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
                 xmlns:pages="clr-namespace:AdofaiModManager.Views.Pages"
-                Title="ADOFAI Mod Manager"
+                Title="Aurora"
                 Icon="pack://application:,,,/Assets/app.ico"
                 Width="1200"
                 Height="780"
@@ -21,13 +21,13 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <ui:TitleBar Grid.Row="0" Title="ADOFAI Mod Manager">
+        <ui:TitleBar Grid.Row="0" Title="Aurora">
             <ui:TitleBar.Icon>
                 <ui:ImageIcon Source="pack://application:,,,/Assets/app-128.png" />
             </ui:TitleBar.Icon>
         </ui:TitleBar>
 
-        <!-- AMM 自身有新版本时的提示条（可关闭；「忽略此版本」后同一版本不再提示） -->
+        <!-- Aurora 自身有新版本时的提示条（可关闭；「忽略此版本」后同一版本不再提示） -->
         <Border x:Name="AppUpdateBar"
                 Grid.Row="1"
                 Margin="12,8,12,0"

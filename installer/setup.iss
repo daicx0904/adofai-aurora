@@ -1,24 +1,24 @@
 ﻿; ============================================================
-;  ADOFAI Mod Manager —— Inno Setup 安装包脚本
+;  Aurora —— Inno Setup 安装包脚本
 ;
 ;  用法：
 ;    iscc installer\setup.iss /DAppVersion=0.1
 ;    （或直接运行 installer\build-installer.ps1，它会先发布再调用本脚本）
 ;
 ;  安装位置策略：
-;    默认「为所有用户安装」→ C:\Program Files\ADOFAI Mod Manager（需要管理员）
+;    默认「为所有用户安装」→ C:\Program Files\Aurora（需要管理员）
 ;    也可以在安装向导第一步选「仅为我安装」→ %LocalAppData%\Programs\...
 ;    两种方式都允许自定义目录。
 ; ============================================================
 
 #ifndef AppVersion
-  #define AppVersion "0.1.5"
+  #define AppVersion "0.1.6"
 #endif
 
-#define AppName "ADOFAI Mod Manager"
+#define AppName "Aurora"
 #define AppPublisher "lishangi688"
-#define AppExeName "AdofaiModManager.exe"
-#define SourceDir "..\dist\ADOFAI-Mod-Manager"
+#define AppExeName "Aurora.exe"
+#define SourceDir "..\dist\Aurora"
 
 [Setup]
 AppId={{B7E4C1D2-9A3F-4E58-8C11-2F6D7A9B0C34}
@@ -26,9 +26,9 @@ AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
 AppPublisher={#AppPublisher}
-AppPublisherURL=https://github.com/lishangi688/adofai-mod-manager
-AppSupportURL=https://github.com/lishangi688/adofai-mod-manager/issues
-AppUpdatesURL=https://github.com/lishangi688/adofai-mod-manager/releases
+AppPublisherURL=https://github.com/lishangi688/adofai-aurora
+AppSupportURL=https://github.com/lishangi688/adofai-aurora/issues
+AppUpdatesURL=https://github.com/lishangi688/adofai-aurora/releases
 
 ; 默认装到 Program Files（所有用户）；允许在向导里改为「仅为我安装」
 DefaultDirName={autopf}\{#AppName}
@@ -41,7 +41,7 @@ PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
 
 OutputDir=..\dist\installer
-OutputBaseFilename=ADOFAI-Mod-Manager-Setup-{#AppVersion}
+OutputBaseFilename=Aurora-Setup-{#AppVersion}
 SetupIconFile=..\src\AdofaiModManager\Assets\app.ico
 UninstallDisplayIcon={app}\{#AppExeName}
 UninstallDisplayName={#AppName}

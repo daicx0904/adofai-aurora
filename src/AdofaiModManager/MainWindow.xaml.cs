@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Windows;
 using AdofaiModManager.Services;
 using AdofaiModManager.Views.Pages;
@@ -47,7 +47,7 @@ public partial class MainWindow : FluentWindow
 
     private AppUpdateInfo? _appUpdate;
 
-    /// <summary>启动时静默检查 AMM 自身有没有新版本（有新版本才显示提示条）。</summary>
+    /// <summary>启动时静默检查 Aurora 自身有没有新版本（有新版本才显示提示条）。</summary>
     private async Task RunStartupAppUpdateCheckAsync()
     {
         try
@@ -72,7 +72,7 @@ public partial class MainWindow : FluentWindow
 
             _appUpdate = info;
             AppUpdateText.Text =
-                $"AMM 有新版本 v{info.Version}（来源：{info.SourceLabel}）　·　当前 v{AppUpdateService.CurrentVersion}"
+                $"Aurora 有新版本 v{info.Version}（来源：{info.SourceLabel}）　·　当前 v{AppUpdateService.CurrentVersion}"
                 + $"\n{AppUpdateService.DistributionHint}";
             AppUpdateBar.Visibility = Visibility.Visible;
         }

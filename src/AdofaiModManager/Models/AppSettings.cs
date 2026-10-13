@@ -42,7 +42,7 @@ public sealed class AppSettings
     public bool CheckUpdatesOnStartup { get; set; } = true;
 
     /// <summary>
-    /// 用户选择「忽略此版本」的 AMM 版本号。
+    /// 用户选择「忽略此版本」的 Aurora 版本号。
     /// 记下来后，同一个版本不再重复提示（换了新版本还会提示）。
     /// </summary>
     public string? SkippedAppVersion { get; set; }

@@ -1,4 +1,4 @@
-﻿# ADOFAI Mod Manager —— 一键打包（发布版 + 安装包 + 资源站用合并包）
+﻿# Aurora —— 一键打包（发布版 + 安装包 + 资源站用合并包）
 #
 # 用法：
 #   powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1
@@ -6,16 +6,16 @@
 #   powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1 -Version 0.2 -Installer
 #
 # 产物：
-#   dist\ADOFAI-Mod-Manager\                       绿色版（解压即用）
-#   dist\ADOFAI-Mod-Manager-v{版本}-win-x64.zip    绿色版压缩包（GitHub 发布用）
-#   dist\installer\ADOFAI-Mod-Manager-Setup-{版本}.exe   安装包（GitHub 发布用，需要 -Installer）
-#   dist\AMM-{版本}-all.zip                        资源站用「合并包」（需要 -Installer）
+#   dist\Aurora\                       绿色版（解压即用）
+#   dist\Aurora-v{版本}-win-x64.zip    绿色版压缩包（GitHub 发布用）
+#   dist\installer\Aurora-Setup-{版本}.exe   安装包（GitHub 发布用，需要 -Installer）
+#   dist\Aurora-{版本}-all.zip                        资源站用「合并包」（需要 -Installer）
 #       结构：portable\（绿色版文件） + Setup.exe + 说明.txt + update.json
 #       原因：资源站一个版本只能挂一个 zip，所以把两种形态打在一起；
 #             客户端按自己的形态取用（绿色版用 portable\，安装版取 Setup.exe）。
 
 param(
-    [string]$Version = "0.1.5",
+    [string]$Version = "0.1.6",
     [switch]$Installer
 )
 
@@ -63,17 +63,17 @@ function New-ZipArchive {
 }
 
 Write-Host "==> 1/3 发布自包含版本 (v$Version)" -ForegroundColor Cyan
-if (Test-Path 'dist\ADOFAI-Mod-Manager') { Remove-Item 'dist\ADOFAI-Mod-Manager' -Recurse -Force }
+if (Test-Path 'dist\Aurora') { Remove-Item 'dist\Aurora' -Recurse -Force }
 dotnet publish 'src\AdofaiModManager\AdofaiModManager.csproj' `
     -c Release -r win-x64 --self-contained true `
     -p:DebugType=none -p:Version=$Version `
-    -o 'dist\ADOFAI-Mod-Manager'
+    -o 'dist\Aurora'
 if ($LASTEXITCODE -ne 0) { throw 'dotnet publish 失败' }
 
 Write-Host "==> 2/3 生成绿色版 zip" -ForegroundColor Cyan
-$zip = "dist\ADOFAI-Mod-Manager-v$Version-win-x64.zip"
+$zip = "dist\Aurora-v$Version-win-x64.zip"
 Get-ChildItem 'dist' -Filter '*.zip' -ErrorAction SilentlyContinue | Remove-Item -Force
-New-ZipArchive -SourceDir 'dist\ADOFAI-Mod-Manager' -ZipPath (Join-Path (Get-Location) $zip)
+New-ZipArchive -SourceDir 'dist\Aurora' -ZipPath (Join-Path (Get-Location) $zip)
 Write-Host "    $zip"
 
 # 开发阶段默认只出绿色版；需要安装包时加 -Installer
@@ -110,36 +110,36 @@ Write-Host "==> 4/4 生成资源站用「合并包」" -ForegroundColor Cyan
 # 结构：ADOFAI Mod Manager\ + Setup.exe + 说明.txt + update.json
 # 绿色版客户端解压「ADOFAI Mod Manager」文件夹即可；安装版客户端取 Setup.exe 运行。
 # 文件夹刻意用产品全名，方便用户从资源站下载后直接拖到自己想放的位置。
-$portableFolder = 'ADOFAI Mod Manager'
+$portableFolder = 'Aurora'
 $stage = "dist\_allinone"
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Path "$stage\$portableFolder" -Force | Out-Null
 
-Copy-Item 'dist\ADOFAI-Mod-Manager\*' "$stage\$portableFolder" -Recurse -Force
+Copy-Item 'dist\Aurora\*' "$stage\$portableFolder" -Recurse -Force
 # 只取"本次版本"的安装包（不要用通配符随便取第一个）
-$setupExe = Get-ChildItem "dist\installer\ADOFAI-Mod-Manager-Setup-$Version.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-if (-not $setupExe) { throw "找不到本版本的安装包：dist\installer\ADOFAI-Mod-Manager-Setup-$Version.exe" }
+$setupExe = Get-ChildItem "dist\installer\Aurora-Setup-$Version.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+if (-not $setupExe) { throw "找不到本版本的安装包：dist\installer\Aurora-Setup-$Version.exe" }
 Copy-Item $setupExe.FullName "$stage\$($setupExe.Name)" -Force
 
 $readme = @"
-ADOFAI Mod Manager v$Version
+Aurora v$Version
 
 这个压缩包里同时包含两种形态，按你的需要取用：
 
 【绿色版（解压即用）】
   把「$portableFolder」文件夹整个拖到你想要的位置即可，双击里面的
-  AdofaiModManager.exe 就能用。（也可以把它里面的文件覆盖到已有的程序目录来更新。）
+  Aurora.exe 就能用。（也可以把它里面的文件覆盖到已有的程序目录来更新。）
 
 【安装版】
   直接运行 $($setupExe.Name)，按提示安装（会覆盖旧版本，设置与收藏保留）。
 
-发布页：https://github.com/lishangi688/adofai-mod-manager/releases
+发布页：https://github.com/lishangi688/adofai-aurora/releases
 "@
 [IO.File]::WriteAllText("$stage\说明.txt", $readme, (New-Object System.Text.UTF8Encoding $false))
 
 # 给自动更新用的元信息（客户端据此确认"这就是我要的版本"、并知道绿色版文件夹叫什么）
 $manifest = @{
-    name       = 'ADOFAI Mod Manager'
+    name       = 'Aurora'
     version    = $Version
     portable   = $portableFolder
     installer  = $setupExe.Name
@@ -147,7 +147,7 @@ $manifest = @{
 } | ConvertTo-Json -Depth 3
 [IO.File]::WriteAllText("$stage\update.json", $manifest, (New-Object System.Text.UTF8Encoding $false))
 
-$allZip = "dist\ADOFAI Mod Manager-$Version-all.zip"
+$allZip = "dist\Aurora-$Version-all.zip"
 New-ZipArchive -SourceDir $stage -ZipPath (Join-Path (Get-Location) $allZip)
 Remove-Item $stage -Recurse -Force
 

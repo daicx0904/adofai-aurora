@@ -1,4 +1,4 @@
-# ADOFAI Mod Manager（暂定名）— 需求与技术方案
+# Aurora（暂定名）— 需求与技术方案
 
 > 版本：v0.1（2026-09-28）
 > 说明：本文档是我（AI）根据你的决策 + 实际机器环境调研整理的，用来对齐目标。你随时可以改。
@@ -156,23 +156,23 @@
 | P5 | 资源站对接（API key、浏览、搜索、下载安装、更新提醒） | ✅ 完成（更新提醒在 P6） |
 | P6 | 收藏、兼容性提示、打磨、打包安装器、许可页 | ✅ 完成 |
 | P6.5 | 首次使用向导（游戏目录 / 加载器 / 资源站，每步可跳过） | ✅ 完成 |
-| P7 | AMM 自身更新检查（GitHub Releases + 资源站工具库双通道） | ✅ 完成 |
+| P7 | Aurora 自身更新检查（GitHub Releases + 资源站工具库双通道） | ✅ 完成 |
 | P8 | 发布 v0.1（GitHub 仓库 + Release，zip 与安装包两种形式） | ✅ 完成 |
 
 ### v0.1.1 计划（接入资源站）
 
-**目标**：站长把 AMM 上架到资源站后，让「资源站通道」真正可用、可靠。
+**目标**：站长把 Aurora 上架到资源站后，让「资源站通道」真正可用、可靠。
 
 配套文档：[`docs/SITE-LISTING.md`](SITE-LISTING.md)（给站长的对接说明，含命名与字段约定）。
 
 要做的：
 
 1. **显示名识别放宽**（站点 slug 是自动生成的 `tool-xxxxxxxx`，只能靠名字）
-   - 现在：显示名包含 `ADOFAI Mod Manager`，或去空格后正好等于 `AMM`
-   - 增加：显示名**以 `AMM` 开头**（如 `AMM 模组管理器`）
+   - 现在：显示名包含 `Aurora`，或去空格后正好等于 `Aurora`
+   - 增加：显示名**以 `Aurora` 开头**（如 `Aurora 模组管理器`）
 2. **同时搜索 Mod 库**：万一站长把它放在 `Mod 资源库` 而不是工具库，也能识别
    （`/api/mods` 与 `/api/tools` 的字段结构一致，逻辑可复用）
-3. **手动指定兜底**：设置里允许用户手动填写「AMM 在资源站上的名字」，
+3. **手动指定兜底**：设置里允许用户手动填写「Aurora 在资源站上的名字」，
    自动识别失败时仍可用（应对站长改名、或第三方镜像站）
 4. **接入后实测**：确认 `资源站最新版本 > 当前版本` 时能正常提示，
    并在资源站版本更高时优先使用资源站的下载入口
@@ -203,7 +203,7 @@
     还能顺带发现重复安装与加载失败；其次是作者在 Release 说明里的声明（Creplay 就写得很规范）
   - 待与朋友、站长商议后再决定范围（含是否推动站点增加结构化「适配游戏版本」字段）
 - GitHub 仓库的介绍（About / README 首屏文案）后续要再打磨一次
-- 给 AMM 自身也做一个「一键下载并更新」的自动更新（需要处理管理员权限与自我替换）
+- 给 Aurora 自身也做一个「一键下载并更新」的自动更新（需要处理管理员权限与自我替换）
 
 ### 一键自动更新（v0.1.2 起）
 
@@ -211,22 +211,22 @@
 
 | 形态 | 做法 |
 |---|---|
-| **绿色版** | 下载压缩包 → 校验包内 `update.json` 的版本 → 解压到临时目录 → 生成一个 cmd 脚本，**等 AMM 退出后**用 robocopy 覆盖程序目录并重启 |
-| **安装版** | 下载安装包（GitHub 直接给 exe；资源站给合并包，从中取出 Setup.exe）→ **打开安装程序交给用户自己装**（不做静默安装）。带 `/CLOSEAPPLICATIONS /RESTARTAPPLICATIONS`，安装器会在需要时自动关闭 AMM、装完自动重新打开 |
+| **绿色版** | 下载压缩包 → 校验包内 `update.json` 的版本 → 解压到临时目录 → 生成一个 cmd 脚本，**等 Aurora 退出后**用 robocopy 覆盖程序目录并重启 |
+| **安装版** | 下载安装包（GitHub 直接给 exe；资源站给合并包，从中取出 Setup.exe）→ **打开安装程序交给用户自己装**（不做静默安装）。带 `/CLOSEAPPLICATIONS /RESTARTAPPLICATIONS`，安装器会在需要时自动关闭 Aurora、装完自动重新打开 |
 
 **发布包策略**
 
 | 渠道 | 文件 | 说明 |
 |---|---|---|
 | GitHub Releases | 绿色版 zip + 安装包 exe（两个独立文件） | 各取所需，体积最小 |
-| 资源站（工具库） | **一个** `ADOFAI Mod Manager-x.y.z-all.zip` | 站点一个版本只能挂一个文件，所以打成合并包 |
+| 资源站（工具库） | **一个** `Aurora-x.y.z-all.zip` | 站点一个版本只能挂一个文件，所以打成合并包 |
 
 合并包结构（绿色版文件夹 + 安装包 + `update.json` + 说明）：
 
 ```
-ADOFAI Mod Manager-0.1.2-all.zip
-├── ADOFAI Mod Manager/               ← 绿色版：整个文件夹拖到想要的位置即可（也可覆盖更新）
-├── ADOFAI-Mod-Manager-Setup-0.1.2.exe
+Aurora-0.1.2-all.zip
+├── Aurora/               ← 绿色版：整个文件夹拖到想要的位置即可（也可覆盖更新）
+├── Aurora-Setup-0.1.2.exe
 ├── update.json                       ← 版本号 + 绿色版文件夹名（客户端据此确认与定位）
 └── 说明.txt
 ```
@@ -275,15 +275,15 @@ ADOFAI Mod Manager-0.1.2-all.zip
 **开发测试钩子**：设环境变量 `AMM_UPDATE_TEST_PACKAGE=<本地包路径>` 可让「检查更新」把该包当成新版本，
 用于在不发版的情况下验证整条自动更新链路（版本号仍按包内 `update.json` 与当前版本比较，不会死循环）。
 
-### AMM 自身更新（P7 设计决策）
+### Aurora 自身更新（P7 设计决策）
 和 mod 一样走**双通道**，取版本号更高者：
 
 | 通道 | 来源 | 说明 |
 |---|---|---|
-| ① GitHub Releases | `github.com/lishangi688/adofai-mod-manager` | 作者首发；国内可能连不上，失败即忽略 |
-| ② 资源站「工具库」 | 站长已同意把 AMM 放到资源站上 | 国内稳定；在 `/api/tools` 里按**显示名**认出自己（站点 slug 是自动生成的 `tool-xxxxxxxx`，不可用） |
+| ① GitHub Releases | `github.com/lishangi688/adofai-aurora` | 作者首发；国内可能连不上，失败即忽略 |
+| ② 资源站「工具库」 | 站长已同意把 Aurora 放到资源站上 | 国内稳定；在 `/api/tools` 里按**显示名**认出自己（站点 slug 是自动生成的 `tool-xxxxxxxx`，不可用） |
 
-- `设置 → 关于`：显示 `AMM 版本 v0.1` + 「检查更新」按钮；有新版弹窗询问是否打开下载页。
+- `设置 → 关于`：显示 `Aurora 版本 v0.1` + 「检查更新」按钮；有新版弹窗询问是否打开下载页。
 - 启动时（若开启「打开软件时自动检查更新」）**静默检查**：有新版本才在窗口顶部显示一条提示条，
   带「打开发布页」和**「忽略此版本」**（记在 `SkippedAppVersion`，同一版本不再重复提示）。
 - **不做自动替换程序**：安装版在 `Program Files` 下需要管理员权限，交给用户手动更新更稳妥；
@@ -291,10 +291,10 @@ ADOFAI Mod Manager-0.1.2-all.zip
 
 ### 发布形式（决策）
 
-- **安装包（默认）**：单个 `ADOFAI-Mod-Manager-Setup-x.y.z.exe`（Inno Setup 制作）。
+- **安装包（默认）**：单个 `Aurora-Setup-x.y.z.exe`（Inno Setup 制作）。
   - 安装向导第一步可选：**为所有用户安装**（默认，`Program Files`，需要管理员）/ **仅为我安装**（用户目录，免管理员），两种都支持**自定义路径**。
   - 自带开始菜单快捷方式、可选桌面快捷方式、卸载程序、许可协议页。
-- **绿色版**：`ADOFAI-Mod-Manager-vx.y.z-win-x64.zip`，解压即用（给不想安装的人）。
+- **绿色版**：`Aurora-vx.y.z-win-x64.zip`，解压即用（给不想安装的人）。
 - 一键打包：`installer/build-installer.ps1`（发布 → 绿色版 zip → 安装包）。
 - ⚠️ 因为默认可能装到 `Program Files`（只读），**程序不向安装目录写任何文件**：
   配置/收藏/更新源在 `%AppData%\AdofaiModManager`，**日志在 `%LocalAppData%\AdofaiModManager\logs`**。
@@ -328,7 +328,7 @@ ADOFAI Mod Manager-0.1.2-all.zip
 
 1. ✅ 资源站 API 已实测通过，详见 [`docs/API.md`](API.md)（base URL：`https://www.adofaitools.top`，鉴权：`Authorization: Bearer`）
 2. ⬜ 站长对第三方调用/公开分发的授权
-3. ⬜ 软件正式名字（暂定 ADOFAI Mod Manager）
+3. ⬜ 软件正式名字（暂定 Aurora）
 4. ⬜ 本软件自己的开源许可证与是否公开源码
 5. ⬜ 分发方式（NSIS 安装包 / 绿色版 zip）
 6. ⬜ 是否处理 BepInEx 遗留（游戏目录里有个空的 `BepInEx\plugins\CheryTools`）

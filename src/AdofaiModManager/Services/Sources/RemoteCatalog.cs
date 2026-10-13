@@ -186,7 +186,7 @@ public sealed class RemoteInstaller(IRemoteSource source, ModService modService)
     {
         if (mod.Loader == ModLoader.MelonLoader)
         {
-            return new InstallResult(false, "这个 mod 需要 MelonLoader 加载器，AMM 目前只支持 UMM，无法自动安装。可到该 mod 的发布页（简介里有链接）手动下载。");
+            return new InstallResult(false, "这个 mod 需要 MelonLoader 加载器，Aurora 目前只支持 UMM，无法自动安装。可到该 mod 的发布页（简介里有链接）手动下载。");
         }
 
         RemoteDownload? download;
@@ -230,7 +230,7 @@ public sealed class RemoteInstaller(IRemoteSource source, ModService modService)
 
             return new InstallResult(
                 false,
-                $"这个 mod 的对应版本是 MelonLoader 版（{shown}），AMM 目前只支持 UMM，无法自动安装。可到该 mod 的发布页手动下载并自行安装。");
+                $"这个 mod 的对应版本是 MelonLoader 版（{shown}），Aurora 目前只支持 UMM，无法自动安装。可到该 mod 的发布页手动下载并自行安装。");
         }
 
         // 走源自己的下载地址（保留它们的下载计数），ModService 会下载 + 解压 + 安装

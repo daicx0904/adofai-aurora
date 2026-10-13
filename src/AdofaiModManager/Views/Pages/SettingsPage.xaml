@@ -81,7 +81,7 @@
             <TextBlock Margin="0,0,0,6"
                        FontSize="12"
                        Opacity="0.6"
-                       Text="AMM 支持下面这些 mod 来源，可在「在线 Mod」页右上角切换。点击网址可以打开对应网站。"
+                       Text="Aurora 支持下面这些 mod 来源，可在「在线 Mod」页右上角切换。点击网址可以打开对应网站。"
                        TextWrapping="Wrap" />
             <Grid Margin="0,4,0,0">
                 <Grid.ColumnDefinitions>

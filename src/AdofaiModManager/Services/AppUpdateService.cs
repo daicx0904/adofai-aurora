@@ -7,7 +7,7 @@ using Microsoft.Win32;
 
 namespace AdofaiModManager.Services;
 
-/// <summary>AMM 自身的分发形态：影响更新时推荐下载哪种文件。</summary>
+/// <summary>Aurora 自身的分发形态：影响更新时推荐下载哪种文件。</summary>
 public enum AppDistribution
 {
     /// <summary>绿色版（解压即用）</summary>
@@ -18,7 +18,7 @@ public enum AppDistribution
 }
 
 /// <summary>
-/// AMM 自身的新版本信息。
+/// Aurora 自身的新版本信息。
 /// </summary>
 /// <param name="Version">新版本号</param>
 /// <param name="SourceLabel">来源（资源站 / GitHub）</param>
@@ -53,9 +53,9 @@ public sealed record AppUpdateInfo(
 }
 
 /// <summary>
-/// AMM 自身的更新检查（两条通道，思路和 mod 一致）：
+/// Aurora 自身的更新检查（两条通道，思路和 mod 一致）：
 ///   ① **GitHub Releases** —— 作者首发，国内可能需要代理；
-///   ② **资源站「工具库」** —— 站长会把 AMM 也放到资源站上。
+///   ② **资源站「工具库」** —— 站长会把 Aurora 也放到资源站上。
 ///
 /// 两边都查，取版本号更高的那个；都查不到就当作"已是最新"（不打扰用户）。
 ///
@@ -66,7 +66,7 @@ public static class AppUpdateService
 {
     public const string GitHubOwner = "lishangi688";
 
-    public const string GitHubRepo = "adofai-mod-manager";
+    public const string GitHubRepo = "adofai-aurora";
 
     private static readonly HttpClient Http = CreateHttpClient();
 
@@ -287,7 +287,7 @@ public static class AppUpdateService
         }
     }
 
-    /// <summary>资源站：在「工具库」里找 AMM 自己，并尽量取到一个可直链下载的文件。</summary>
+    /// <summary>资源站：在「工具库」里找 Aurora 自己，并尽量取到一个可直链下载的文件。</summary>
     private static async Task<AppUpdateInfo?> CheckSiteAsync(AdofaiToolsClient client, CancellationToken ct)
     {
         try
@@ -351,7 +351,7 @@ public static class AppUpdateService
         }
     }
 
-    /// <summary>在工具库里认出 AMM 自己（站点上的名字/短名/别名都认）。</summary>
+    /// <summary>在工具库里认出 Aurora 自己（站点上的名字/短名/别名都认；兼容旧名 AMM）。</summary>
     private static bool IsSelf(ToolListItem tool)
     {
         var name = tool.DisplayName ?? string.Empty;
@@ -359,10 +359,12 @@ public static class AppUpdateService
 
         var compact = name.Replace(" ", string.Empty);
 
-        return name.Contains("ADOFAI Mod Manager", StringComparison.OrdinalIgnoreCase)
+        return name.Contains("Aurora", StringComparison.OrdinalIgnoreCase)
+               || name.Contains("ADOFAI Mod Manager", StringComparison.OrdinalIgnoreCase)
                || compact.Equals("AMM", StringComparison.OrdinalIgnoreCase)
-               // 站点上常见的写法：AMM 模组管理器 / AMM管理器
+               // 旧名（资源站上可能还没改名）
                || compact.StartsWith("AMM", StringComparison.OrdinalIgnoreCase)
+               || slug.Contains("adofai-aurora", StringComparison.OrdinalIgnoreCase)
                || slug.Contains("adofai-mod-manager", StringComparison.OrdinalIgnoreCase)
                || slug.Equals("amm", StringComparison.OrdinalIgnoreCase);
     }
@@ -394,7 +396,8 @@ public static class AppUpdateService
                         continue;
                     }
 
-                    if (!displayName.Contains("ADOFAI Mod Manager", StringComparison.OrdinalIgnoreCase))
+                    if (!displayName.Contains("Aurora", StringComparison.OrdinalIgnoreCase)
+                        && !displayName.Contains("ADOFAI Mod Manager", StringComparison.OrdinalIgnoreCase))
                     {
                         continue;
                     }
@@ -460,7 +463,7 @@ public static class AppUpdateService
     private static HttpClient CreateHttpClient()
     {
         var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("AdofaiModManager/0.1");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Aurora/0.1");
         return client;
     }
 }

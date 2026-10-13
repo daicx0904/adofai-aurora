@@ -204,7 +204,7 @@ public partial class FirstRunWizard : FluentWindow
         var client = AppServices.CreateApiClient();
         if (client is null)
         {
-            SiteKernelText.Text = $"（未配置 ADOFAITools）　AMM 内置内核：{bundledText}";
+            SiteKernelText.Text = $"（未配置 ADOFAITools）　Aurora 内置内核：{bundledText}";
             return;
         }
 
@@ -215,8 +215,8 @@ public partial class FirstRunWizard : FluentWindow
             var site = await KernelBootstrapper.FindLatestSiteKernelAsync(client);
 
             SiteKernelText.Text = site is null
-                ? $"ADOFAITools 上没有找到 UnityModManager　·　AMM 内置内核：{bundledText}"
-                : $"ADOFAITools 最新内核：{site.Value.VersionId}　·　AMM 内置内核：{bundledText}";
+                ? $"ADOFAITools 上没有找到 UnityModManager　·　Aurora 内置内核：{bundledText}"
+                : $"ADOFAITools 最新内核：{site.Value.VersionId}　·　Aurora 内置内核：{bundledText}";
         }
         catch (AdofaiToolsException ex)
         {

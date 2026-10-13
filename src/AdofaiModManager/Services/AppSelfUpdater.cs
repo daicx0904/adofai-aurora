@@ -12,12 +12,12 @@ namespace AdofaiModManager.Services;
 public sealed record SelfUpdateResult(bool Success, string Message, bool ShouldExit = false);
 
 /// <summary>
-/// AMM 自身更新：下载 → 校验 → 落地 → 交给外部完成替换。
+/// Aurora 自身更新：下载 → 校验 → 落地 → 交给外部完成替换。
 ///
 /// 为什么要"退出后再替换"：
 /// 正在运行的 exe/dll 被系统占用，没法直接覆盖自己。所以：
-///   · 绿色版：解压到临时目录，由一个小脚本等 AMM 退出后复制过去并重启（ShouldExit = true）；
-///   · 安装版：下载并打开安装程序，由用户自己走安装向导，安装器负责关闭/重启 AMM（ShouldExit = false）。
+///   · 绿色版：解压到临时目录，由一个小脚本等 Aurora 退出后复制过去并重启（ShouldExit = true）；
+///   · 安装版：下载并打开安装程序，由用户自己走安装向导，安装器负责关闭/重启 Aurora（ShouldExit = false）。
 /// </summary>
 public static class AppSelfUpdater
 {
@@ -46,7 +46,7 @@ public static class AppSelfUpdater
                 return new SelfUpdateResult(false, "没有找到适合当前版本（安装版 / 绿色版）的下载文件，请手动下载。");
             }
 
-            var workRoot = Path.Combine(Path.GetTempPath(), $"amm-update-{info.Version}");
+            var workRoot = Path.Combine(Path.GetTempPath(), $"aurora-update-{info.Version}");
             var packageDir = Path.Combine(workRoot, "package");
             var payloadDir = Path.Combine(workRoot, "payload");
 
@@ -127,7 +127,7 @@ public static class AppSelfUpdater
                 AppPaths.AppendDebugLog($"[selfupdate] 解压到 {payloadDir}，顶层文件示例：{top}");
             }
 
-            // ---- 绿色版：写更新脚本，等 AMM 退出后替换并重启 ----
+            // ---- 绿色版：写更新脚本，等 Aurora 退出后替换并重启 ----
             progress?.Report("准备替换文件…");
             return LaunchPortableUpdater(payloadDir, AppContext.BaseDirectory, workRoot);
         }
@@ -317,7 +317,7 @@ public static class AppSelfUpdater
 
             return new SelfUpdateResult(
                 true,
-                "安装程序已打开，请按提示完成更新（安装时会自动关闭 AMM，装完自动重新打开）。",
+                "安装程序已打开，请按提示完成更新（安装时会自动关闭 Aurora，装完自动重新打开）。",
                 ShouldExit: false);
         }
         catch (Exception ex)
@@ -334,12 +334,18 @@ public static class AppSelfUpdater
         try
         {
             var target = targetDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            var exe = Path.Combine(target, "AdofaiModManager.exe");
             var log = Path.Combine(AppPaths.LogDirectory, "update.log");
+
+            // 当前正在运行的 exe：脚本要等它退出。
+            // 更新包里的新 exe：更新完要启动它。两者可能不同名
+            // （例如从旧名 AdofaiModManager.exe 换成 Aurora.exe），所以分开判断。
+            var currentExe = Path.GetFileName(Environment.ProcessPath ?? "Aurora.exe");
+            var newExe = PickNewExeName(payloadDir, currentExe);
+            var newExePath = Path.Combine(target, newExe);
 
             Directory.CreateDirectory(AppPaths.LogDirectory);
 
-            var scriptPath = Path.Combine(Path.GetTempPath(), $"amm-apply-{Guid.NewGuid():N}.cmd");
+            var scriptPath = Path.Combine(Path.GetTempPath(), $"aurora-apply-{Guid.NewGuid():N}.cmd");
 
             // 注意：脚本只能写 ASCII。
             // .NET Core 默认不带 GBK(936) 等旧代码页，而且 cmd 对 UTF-8 中文也不友好，
@@ -347,10 +353,10 @@ public static class AppSelfUpdater
             var script = $"""
                 @echo off
                 set "LOG={log}"
-                echo [%date% %time%] waiting for AMM to exit... >> "%LOG%"
+                echo [%date% %time%] waiting for the app to exit... >> "%LOG%"
 
                 :wait
-                tasklist /fi "imagename eq AdofaiModManager.exe" 2>nul | find /i "AdofaiModManager.exe" >nul
+                tasklist /fi "imagename eq {currentExe}" 2>nul | find /i "{currentExe}" >nul
                 if not errorlevel 1 (
                     ping -n 2 127.0.0.1 >nul
                     goto wait
@@ -360,8 +366,10 @@ public static class AppSelfUpdater
                 robocopy "{payloadDir}" "{target}" /E /IS /IT /NFL /NDL /NJH /NJS /NP >> "%LOG%" 2>&1
                 echo [%date% %time%] robocopy exit code %errorlevel% >> "%LOG%"
 
-                echo [%date% %time%] starting AMM... >> "%LOG%"
-                start "" "{exe}"
+                if /i not "{currentExe}"=="{newExe}" del "{target}\{currentExe}" 2>nul
+
+                echo [%date% %time%] starting the app... >> "%LOG%"
+                start "" "{newExePath}"
 
                 rmdir /s /q "{payloadDir}" 2>nul
                 rmdir /s /q "{workRoot}" 2>nul
@@ -387,7 +395,7 @@ public static class AppSelfUpdater
                 WindowStyle = ProcessWindowStyle.Hidden,
             });
 
-            return new SelfUpdateResult(true, "正在替换文件，AMM 即将退出并自动重启完成更新。", ShouldExit: true);
+            return new SelfUpdateResult(true, "正在替换文件，Aurora 即将退出并自动重启完成更新。", ShouldExit: true);
         }
         catch (Exception ex)
         {
@@ -425,6 +433,34 @@ public static class AppSelfUpdater
         }
     }
 
+    /// <summary>
+    /// 从更新包里挑出"要启动的 exe"。
+    /// 优先与当前同名；否则排除 createdump.exe 后、优先名字里带 Aurora 的那个
+    /// （自包含发布包里除了程序本身，还有一个 createdump.exe）。
+    /// </summary>
+    private static string PickNewExeName(string payloadDir, string currentExe)
+    {
+        try
+        {
+            var candidates = Directory
+                .EnumerateFiles(payloadDir, "*.exe", SearchOption.TopDirectoryOnly)
+                .Select(Path.GetFileName)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Select(name => name!)
+                .ToList();
+
+            return candidates.FirstOrDefault(n => string.Equals(n, currentExe, StringComparison.OrdinalIgnoreCase))
+                   ?? candidates.FirstOrDefault(n => !n.Equals("createdump.exe", StringComparison.OrdinalIgnoreCase)
+                                                     && n.Contains("Aurora", StringComparison.OrdinalIgnoreCase))
+                   ?? candidates.FirstOrDefault(n => !n.Equals("createdump.exe", StringComparison.OrdinalIgnoreCase))
+                   ?? currentExe;
+        }
+        catch
+        {
+            return currentExe;
+        }
+    }
+
     private static string SanitizeFileName(string name)
     {
         var invalid = Path.GetInvalidFileNameChars();
@@ -434,7 +470,7 @@ public static class AppSelfUpdater
     private static HttpClient CreateHttpClient()
     {
         var client = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("AdofaiModManager/0.1");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Aurora/0.1");
         return client;
     }
 }

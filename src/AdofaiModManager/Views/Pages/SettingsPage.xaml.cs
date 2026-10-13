@@ -59,7 +59,7 @@ public partial class SettingsPage : Page
 
         RerunWizardPanel.Visibility = ShowRerunWizard ? Visibility.Visible : Visibility.Collapsed;
 
-        AppVersionText.Text = $"AMM 版本 v{AppUpdateService.CurrentVersion}";
+        AppVersionText.Text = $"Aurora 版本 v{AppUpdateService.CurrentVersion}";
 
         CheckOnStartupBox.IsChecked = settings.CheckUpdatesOnStartup;
         CheckGitHubBox.IsChecked = settings.CheckGitHubUpdates;
@@ -401,7 +401,7 @@ public partial class SettingsPage : Page
         var canDownloadFromSite = info.UrlFor(AppUpdateService.Distribution) is not null;
 
         var text =
-            $"发现 AMM 新版本 v{info.Version}（来源：{info.SourceLabel}）\n"
+            $"发现 Aurora 新版本 v{info.Version}（来源：{info.SourceLabel}）\n"
             + $"当前版本：v{AppUpdateService.CurrentVersion}\n\n"
             + AppUpdateService.DistributionHint + "\n\n";
 
