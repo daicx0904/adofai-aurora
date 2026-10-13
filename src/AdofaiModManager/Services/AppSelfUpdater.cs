@@ -56,15 +56,11 @@ public static class AppSelfUpdater
 
             var isInstaller = distribution == AppDistribution.Installed;
 
-            // 安装版优先直接下安装包（GitHub 侧就是 .exe）；否则下压缩包
-            var fileName = string.IsNullOrWhiteSpace(info.FileName)
-                ? Path.GetFileName(new Uri(url).LocalPath)
-                : info.FileName!;
-
-            if (string.IsNullOrWhiteSpace(fileName))
-            {
-                fileName = isInstaller ? "setup.exe" : "update.zip";
-            }
+            // 文件名必须以「实际选中的下载地址」为准：
+            // 安装版会去下 Setup.exe，但 info.FileName 可能带的是绿色版 zip 的名字，
+            // 直接用会把 exe 存成 .zip、再当压缩包解压 →
+            // "End of Central Directory record could not be found"。
+            var fileName = ResolveFileName(info, url, isInstaller);
 
             var packagePath = Path.Combine(packageDir, SanitizeFileName(fileName));
 
@@ -459,6 +455,46 @@ public static class AppSelfUpdater
         {
             return currentExe;
         }
+    }
+
+    /// <summary>
+    /// 决定下载文件用什么名字保存。顺序：本地路径 → URL 路径末段（要有扩展名，
+    /// 资源站的签名直链通常没有扩展名）→ 更新信息里的文件名 → 兜底。
+    ///
+    /// 为什么要这么绕：一个 AppUpdateInfo 里可能同时带「安装包」和「绿色版 zip」，
+    /// 而 FileName 只存得下其中一个。如果安装版下的是 exe、却用 zip 的名字保存，
+    /// 后续会把它当压缩包解压而失败。
+    /// </summary>
+    private static string ResolveFileName(AppUpdateInfo info, string url, bool isInstaller)
+    {
+        if (File.Exists(url))
+        {
+            var local = Path.GetFileName(url);
+            if (!string.IsNullOrWhiteSpace(local))
+            {
+                return local;
+            }
+        }
+
+        try
+        {
+            var fromUrl = Path.GetFileName(new Uri(url).AbsolutePath);
+            if (!string.IsNullOrWhiteSpace(fromUrl) && fromUrl.Contains('.'))
+            {
+                return fromUrl;
+            }
+        }
+        catch
+        {
+            // 不是合法 URI 就忽略，继续用下面的兜底
+        }
+
+        if (!string.IsNullOrWhiteSpace(info.FileName))
+        {
+            return info.FileName!;
+        }
+
+        return isInstaller ? "setup.exe" : "update.zip";
     }
 
     private static string SanitizeFileName(string name)
