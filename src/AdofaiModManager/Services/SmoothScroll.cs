@@ -154,31 +154,39 @@ public static class SmoothScroll
             return;
         }
 
-        // 鼠标其实悬在下拉弹层上时，滚轮却会落到这里 —— 因为弹层是独立窗口，
-        // 而 Windows 的 WM_MOUSEWHEEL 发给"有键盘焦点的窗口"（＝主窗口），不是鼠标下的窗口。
-        // 结果就是"下拉划不动、背后的详情却在滚"。这种情况要把滚动转交给弹层自己的 ScrollViewer。
-        if (FindPopupScrollViewerUnderMouse(out var popupScroll) &&
-            !ReferenceEquals(popupScroll, sender as ScrollViewer))
+        try
         {
-            if (popupScroll is not null)
+            // 鼠标其实悬在下拉弹层上时，滚轮却会落到这里 —— 因为弹层是独立窗口，
+            // 而 Windows 的 WM_MOUSEWHEEL 发给"有键盘焦点的窗口"（＝主窗口），不是鼠标下的窗口。
+            // 结果就是"下拉划不动、背后的详情却在滚"。这种情况要把滚动转交给弹层自己的 ScrollViewer。
+            if (FindPopupScrollViewerUnderMouse(out var popupScroll) &&
+                !ReferenceEquals(popupScroll, sender as ScrollViewer))
             {
-                SmoothScrollBy(popupScroll, e.Delta);
+                if (popupScroll is not null)
+                {
+                    SmoothScrollBy(popupScroll, e.Delta);
+                }
+
+                // 无论弹层能不能滚（比如项目太少），都别让背后的详情跟着动。
+                e.Handled = true;
+                return;
             }
 
-            // 无论弹层能不能滚（比如项目太少），都别让背后的详情跟着动。
-            e.Handled = true;
-            return;
-        }
+            var target = FindScrollViewer(sender as DependencyObject);
+            if (target is null)
+            {
+                return;
+            }
 
-        var target = FindScrollViewer(sender as DependencyObject);
-        if (target is null)
-        {
-            return;
+            if (SmoothScrollBy(target, e.Delta))
+            {
+                e.Handled = true;
+            }
         }
-
-        if (SmoothScrollBy(target, e.Delta))
+        catch (Exception ex)
         {
-            e.Handled = true;
+            // 滚轮是高频输入回调，任何意外都不该让整个程序崩掉（写进日志便于排查）。
+            AppPaths.AppendDebugLog($"[scroll] 滚轮处理异常（已忽略）：{ex.GetType().Name}: {ex.Message}");
         }
     }
 
@@ -214,16 +222,37 @@ public static class SmoothScroll
     {
         scrollViewer = null;
 
-        for (var node = Mouse.DirectlyOver as DependencyObject; node is not null; node = VisualTreeHelper.GetParent(node))
+        try
         {
-            if (node.GetType().Name == "PopupRoot")
+            for (var node = Mouse.DirectlyOver as DependencyObject; node is not null; node = GetParentSafe(node))
             {
-                scrollViewer = FindScrollViewer(node);
-                return true;
+                if (node.GetType().Name == "PopupRoot")
+                {
+                    scrollViewer = FindScrollViewer(node);
+                    return true;
+                }
             }
+        }
+        catch
+        {
+            // 鼠标可能落在非 Visual 的元素上（例如链接里的 Run），这时按"不在弹层里"处理
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// 安全地取父级：Visual 走视觉树；非 Visual（例如 Hyperlink 里的 Run 这类 ContentElement）
+    /// 走逻辑树。VisualTreeHelper.GetParent 对非 Visual 会直接抛异常，不能无脑调。
+    /// </summary>
+    private static DependencyObject? GetParentSafe(DependencyObject node)
+    {
+        if (node is Visual || node is System.Windows.Media.Media3D.Visual3D)
+        {
+            return VisualTreeHelper.GetParent(node);
+        }
+
+        return LogicalTreeHelper.GetParent(node);
     }
 
     private static void StartAnimation(ScrollViewer scrollViewer, ScrollState state)
