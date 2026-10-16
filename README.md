@@ -2,7 +2,7 @@
 
 《冰与火之舞》（A Dance of Fire and Ice）的 Windows Mod 管理器。
 
-Aurora 将多个来源的 Mod 集中到同一个界面，方便浏览、搜索、安装和检查更新，同时提供本地 Mod 管理和 UnityModManager 加载器维护功能。界面以中文为主，默认连接 ADOFAI Tools，也支持 TUF、modlist 和兼容接口的自定义站点。
+Aurora 将多个来源的 Mod 集中到同一个界面，方便浏览、搜索、安装和检查更新，同时提供本地 Mod 管理和 UnityModManager 加载器维护功能。界面以中文为主，默认连接 ADOFAI Tools，也支持 modrift、TUF、modlist 和兼容接口的自定义站点。
 
 > 项目原名 ADOFAI Mod Manager（AMM），从 v0.1.6 起更名为 Aurora，以避免与另一个同名工具混淆。
 >
@@ -12,7 +12,7 @@ Aurora 将多个来源的 Mod 集中到同一个界面，方便浏览、搜索�
 
 ### 在线 Mod
 
-- 切换 ADOFAI Tools、TUF、modlist 和自定义来源
+- 切换 ADOFAI Tools、modrift、TUF、modlist 和自定义来源
 - 浏览、搜索、排序和分类筛选 Mod，具体选项取决于来源支持的功能
 - 查看 Mod 介绍和版本，安装指定版本
 - 识别已安装和可更新的 Mod
@@ -74,6 +74,7 @@ Aurora 将多个来源的 Mod 集中到同一个界面，方便浏览、搜索�
 | 来源 | 说明 |
 | --- | --- |
 | [ADOFAI Tools](https://adofaitools.top/) | 默认来源，需要 API key，可在站点“个人中心”创建 |
+| [modrift](https://modrift.org) | 无需 API key，提供公开 API |
 | [TUF（The Universal Forums）](https://tuforums.com/mods) | 无需 API key，提供 Mod 目录和下载服务 |
 | [modlist](https://modlist.org) | 无需 API key，提供公开 API |
 | 自定义站点 | 实现兼容接口后，可在“设置 → 自定义站点”中添加 |
@@ -116,6 +117,7 @@ powershell -ExecutionPolicy Bypass `
 ## 致谢
 
 - 感谢 [ADOFAI Tools](https://adofaitools.top/) 站长 [small-lizi](https://github.com/small-lizi/) 允许 Aurora 接入，并提供在线 Mod 数据和下载服务。相关代码见 [ADOFAI Tools 仓库](https://github.com/small-lizi/ADOFAI-Tools)。
+- 感谢 [modrift](https://modrift.org) 作者 Ilythra 提供公开 API，并允许 Aurora 接入。
 - 感谢 [TUF（The Universal Forums）](https://tuforums.com/mods) 维护团队（[GitHub：T21C](https://github.com/T21C)）提供 Mod 目录和下载服务。
 - 感谢 [modlist.org](https://modlist.org) 作者 square3ang 提供公开 API，并允许 Aurora 接入。相关项目见 [modlist-org](https://github.com/modlist-org)。
 - 感谢 [UnityModManager](https://github.com/newman55/unity-mod-manager) 及其作者 [newman55](https://github.com/newman55/) 提供加载器基础。

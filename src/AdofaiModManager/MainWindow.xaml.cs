@@ -40,8 +40,10 @@ public partial class MainWindow : FluentWindow
 
         if (AppServices.Settings.Settings.CheckUpdatesOnStartup)
         {
-            await RunStartupUpdateCheckAsync();
+            // 先查 Aurora 自身（GitHub + 资源站，通常两秒内出结果），提示条能立刻出现；
+            // 再查已安装 mod 的更新 —— 那一步要跑各个来源，慢的时候要几十秒。
             await RunStartupAppUpdateCheckAsync();
+            await RunStartupUpdateCheckAsync();
         }
     }
 
