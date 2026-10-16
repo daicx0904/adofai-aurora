@@ -27,6 +27,7 @@ public static class RemoteSources
             var list = new List<SourceChoice>
             {
                 new(AppServices.SiteDisplayName, null),
+                new("modrift", new ModriftSource()),
             };
 
             if (AdofaiToolsSource.CreateCustomSite() is { } custom)
@@ -49,7 +50,10 @@ public static class RemoteSources
     {
         get
         {
-            var list = new List<IRemoteSource>();
+            var list = new List<IRemoteSource>
+            {
+                new ModriftSource(),
+            };
 
             if (AdofaiToolsSource.CreateCustomSite() is { } custom)
             {

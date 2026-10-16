@@ -91,6 +91,9 @@ public static class AppServices
             ApiCache.TryGet<string>(ApiCache.Key("src", key), ttl, out var cached) ? cached : null;
         SourceCache.DiskWrite = (key, body) => ApiCache.Set(ApiCache.Key("src", key), body);
 
+        // modrift 一个版本可能有多个"按游戏版本分流"的文件，需要当前游戏版本来挑对的
+        ModriftSource.GameVersionProvider = () => GameVersion;
+
         Settings = new SettingsService();
         Settings.Load();
 

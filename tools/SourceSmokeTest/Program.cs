@@ -8,7 +8,7 @@ using AdofaiModManager.Services.Sources;
 
 Console.OutputEncoding = Encoding.UTF8;
 
-var sources = new IRemoteSource[] { new TufSource(), new ModlistSource() };
+var sources = new IRemoteSource[] { new ModriftSource(), new TufSource(), new ModlistSource() };
 var problems = 0;
 
 foreach (var source in sources)

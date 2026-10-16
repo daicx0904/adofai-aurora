@@ -17,6 +17,7 @@
     <Compile Include="..\..\src\AdofaiModManager\Services\Sources\RemoteModels.cs" />
     <Compile Include="..\..\src\AdofaiModManager\Services\Sources\TufSource.cs" />
     <Compile Include="..\..\src\AdofaiModManager\Services\Sources\ModlistSource.cs" />
+    <Compile Include="..\..\src\AdofaiModManager\Services\Sources\ModriftSource.cs" />
   </ItemGroup>
 
 </Project>

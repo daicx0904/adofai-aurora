@@ -469,8 +469,11 @@ public partial class OnlineModsPage : Page
     private void SetBusy(bool busy)
     {
         _busy = busy;
+        LoadingRing.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
         UpdateFooter();
     }
+
+    private void Retry_Click(object sender, RoutedEventArgs e) => _ = SearchAsync(1);
 
     private void UpdateFooter()
     {
@@ -625,79 +628,116 @@ public partial class OnlineModsPage : Page
         _ = SearchAsync(1);
     }
 
+    /// <summary>把一页结果铺到界面上（"缓存里的旧结果"和"刚拉到的新结果"共用）。</summary>
+    private void ShowRemotePage(RemoteModPage result, bool append)
+    {
+        if (!append)
+        {
+            _mods.Clear();
+            _page = 1;
+            _allLoaded = false;
+        }
+
+        _page = Math.Max(1, result.Page);
+        _total = result.Total;
+
+        var known = new HashSet<string>(_mods.Select(m => m.Id), StringComparer.OrdinalIgnoreCase);
+
+        foreach (var remote in result.Items)
+        {
+            var item = RemoteCatalog.ToListItem(remote);
+            ApplyLocalState(item);
+
+            if (known.Add(item.Id))
+            {
+                _mods.Add(item);
+            }
+        }
+
+        _allLoaded = result.Items.Count == 0 || (_total > 0 && _mods.Count >= _total);
+
+        UpdateFooter();
+        _ = LoadIconsAsync(_mods.ToList());
+
+        if (!append && _mods.Count > 0)
+        {
+            ModList.SelectedIndex = 0;
+        }
+    }
+
     private async Task FetchRemoteAsync(IRemoteSource source, int page, bool append)
     {
+        if (!append)
+        {
+            LoadInstalled();
+        }
+
+        var filterKey = CurrentFilterKey();
+        var search = string.IsNullOrWhiteSpace(SearchBox.Text) ? null : SearchBox.Text.Trim();
+        var category = (TypeCombo.SelectedItem as ComboBoxItem)?.Tag as string;
+        var sort = SelectedSort();
+
+        var query = new RemoteModQuery(
+            Page: Math.Max(1, page),
+            PageSize: _pageSize,
+            Search: search,
+            Category: category,
+            Sort: sort);
+
+        // 缓存键：来源 + 查询条件。用来"先显示上次的结果，再后台刷新"，
+        // 这样切来源 / 刷新时不会白屏干等（第三方站有时要好几秒）。
+        var cacheKey = ApiCache.Key(
+            "remotepage",
+            source.Id,
+            page.ToString(),
+            _pageSize.ToString(),
+            search,
+            category,
+            sort.ToString(),
+            filterKey);
+
+        var shownFromCache = false;
+
+        if (!append && ApiCache.TryGetStale<RemoteModPage>(cacheKey, out var cached) && cached is { Items.Count: > 0 })
+        {
+            _loadedFilter = filterKey;
+            ShowRemotePage(cached, append: false);
+            shownFromCache = true;
+            AppPaths.AppendDebugLog($"[remote] {source.Id} 先显示缓存（{cached.Items.Count} 个），后台刷新中");
+        }
+
         SetBusy(true);
+        RetryButton.Visibility = Visibility.Collapsed;
+
+        SubtitleText.Text = shownFromCache
+            ? $"{source.DisplayName}：已显示上次的结果，正在刷新…"
+            : $"正在从 {source.DisplayName} 加载…";
+
         try
         {
-            if (!append)
-            {
-                LoadInstalled();
-            }
-
-            var filterKey = CurrentFilterKey();
-            var search = string.IsNullOrWhiteSpace(SearchBox.Text) ? null : SearchBox.Text.Trim();
-            var category = (TypeCombo.SelectedItem as ComboBoxItem)?.Tag as string;
-            var sort = SelectedSort();
-
             AppPaths.AppendDebugLog(
                 $"[remote] {source.Id} page={page} search={search ?? "-"} sort={sort} category={category ?? "-"}");
 
-            var result = await source.GetModsAsync(new RemoteModQuery(
-                Page: Math.Max(1, page),
-                PageSize: _pageSize,
-                Search: search,
-                Category: category,
-                Sort: sort));
+            var result = await source.GetModsAsync(query);
 
-            if (!append)
-            {
-                _mods.Clear();
-                _page = 1;
-                _allLoaded = false;
-            }
+            ApiCache.Set(cacheKey, result);
 
             _loadedFilter = filterKey;
-            _page = Math.Max(1, page);
-            _total = result.Total;
-
-            var known = new HashSet<string>(_mods.Select(m => m.Id), StringComparer.OrdinalIgnoreCase);
-
-            foreach (var remote in result.Items)
-            {
-                var item = RemoteCatalog.ToListItem(remote);
-                ApplyLocalState(item);
-
-                if (known.Add(item.Id))
-                {
-                    _mods.Add(item);
-                }
-            }
-
-            _allLoaded = result.Items.Count == 0 || (_total > 0 && _mods.Count >= _total);
-
-            UpdateFooter();
-            _ = LoadIconsAsync(_mods.ToList());
-
-            if (!append && _mods.Count > 0)
-            {
-                ModList.SelectedIndex = 0;
-            }
+            ShowRemotePage(result, append);
 
             SubtitleText.Text = _mods.Count == 0
-                ? "没有找到匹配的 mod。"
+                ? $"{source.DisplayName}：没有找到匹配的 mod。"
                 : $"{source.DisplayName} 共 {result.Total} 个资源，已加载 {_mods.Count} 个。";
         }
         catch (Exception ex)
         {
+            // 失败时**保留已经显示的内容**（缓存里那份或上一页），只提示 + 给个「重试」
+            RetryButton.Visibility = Visibility.Visible;
             Report(false, $"从 {source.DisplayName} 获取失败：{ex.Message}");
-            SubtitleText.Text = ex.Message;
 
-            if (!append)
-            {
-                _mods.Clear();
-                UpdateFooter();
-            }
+            SubtitleText.Text = _mods.Count > 0
+                ? $"{source.DisplayName}：刷新失败（{ex.Message}）。当前显示的是上次的结果，可点「重试」。"
+                : $"{source.DisplayName}：加载失败（{ex.Message}）。可点「重试」。";
         }
         finally
         {

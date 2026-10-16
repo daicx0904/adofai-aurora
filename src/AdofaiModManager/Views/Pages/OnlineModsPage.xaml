@@ -16,11 +16,26 @@
 
         <StackPanel Grid.Row="0">
             <TextBlock FontSize="28" FontWeight="SemiBold" Text="在线 Mod" />
-            <TextBlock x:Name="SubtitleText"
-                       Margin="0,4,0,0"
-                       Opacity="0.6"
-                       TextWrapping="Wrap"
-                       Text="浏览 ADOFAITools、TUF、modlist 上的 mod，一键下载安装。" />
+            <StackPanel Margin="0,4,0,0" Orientation="Horizontal">
+                <ui:ProgressRing x:Name="LoadingRing"
+                                 Width="16"
+                                 Height="16"
+                                 Margin="0,0,8,0"
+                                 VerticalAlignment="Center"
+                                 IsIndeterminate="True"
+                                 Visibility="Collapsed" />
+                <TextBlock x:Name="SubtitleText"
+                           VerticalAlignment="Center"
+                           Opacity="0.6"
+                           TextWrapping="Wrap"
+                           Text="浏览 ADOFAITools、TUF、modlist 上的 mod，一键下载安装。" />
+                <ui:Button x:Name="RetryButton"
+                           Margin="12,0,0,0"
+                           VerticalAlignment="Center"
+                           Click="Retry_Click"
+                           Content="重试"
+                           Visibility="Collapsed" />
+            </StackPanel>
         </StackPanel>
 
         <Grid Grid.Row="1" Margin="0,14,0,0">
