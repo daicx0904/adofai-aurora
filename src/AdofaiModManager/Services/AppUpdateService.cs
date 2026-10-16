@@ -297,11 +297,15 @@ public static class AppUpdateService
 
             if (tool is null)
             {
+                AppPaths.AppendDebugLog("[appupdate] 资源站工具库里没认出 Aurora（名字 / slug 都不匹配）");
                 return null;
             }
 
             var detail = await client.GetToolDetailAsync(tool.Slug, ct);
             var version = PickNewestVersion(detail) ?? tool.LatestVersion?.VersionId;
+
+            AppPaths.AppendDebugLog(
+                $"[appupdate] 资源站认出自己：{tool.DisplayName}（slug={tool.Slug}）版本={version ?? "-"}");
 
             if (string.IsNullOrWhiteSpace(version))
             {
@@ -351,22 +355,22 @@ public static class AppUpdateService
         }
     }
 
-    /// <summary>在工具库里认出 Aurora 自己（站点上的名字/短名/别名都认；兼容旧名 AMM）。</summary>
+    /// <summary>
+    /// 在工具库里认出 Aurora 自己。
+    ///
+    /// 只认明确属于我们的名字 / slug，**故意不认单独的 “AMM” 或以 AMM 开头的名字**：
+    /// ADOFAI 生态里已经有一个同样叫 AMM 的管理器，把它认成自己会让 Aurora
+    /// 提示“有新版本”，甚至去装别人的安装包。
+    /// </summary>
     private static bool IsSelf(ToolListItem tool)
     {
         var name = tool.DisplayName ?? string.Empty;
         var slug = tool.Slug ?? string.Empty;
 
-        var compact = name.Replace(" ", string.Empty);
-
         return name.Contains("Aurora", StringComparison.OrdinalIgnoreCase)
                || name.Contains("ADOFAI Mod Manager", StringComparison.OrdinalIgnoreCase)
-               || compact.Equals("AMM", StringComparison.OrdinalIgnoreCase)
-               // 旧名（资源站上可能还没改名）
-               || compact.StartsWith("AMM", StringComparison.OrdinalIgnoreCase)
                || slug.Contains("adofai-aurora", StringComparison.OrdinalIgnoreCase)
-               || slug.Contains("adofai-mod-manager", StringComparison.OrdinalIgnoreCase)
-               || slug.Equals("amm", StringComparison.OrdinalIgnoreCase);
+               || slug.Contains("adofai-mod-manager", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
