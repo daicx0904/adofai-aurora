@@ -76,8 +76,10 @@ public sealed class TufSource : IRemoteSource
         const int cap = 500;
 
         // 先拉第一页（顺便拿到 total）
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         using var firstDoc = await SourceHttp.GetJsonCachedAsync(_http, BuildListUrl(0, pageSize, search), SourceHttp.ListTtl, ct);
         var result = ParsePage(firstDoc.RootElement, out var total);
+        AppPaths.AppendDebugLog($"[tuf] 列表第 1 页 {sw.ElapsedMilliseconds}ms（{result.Count}/{total}）");
 
         if (total <= result.Count)
         {
@@ -98,6 +100,8 @@ public sealed class TufSource : IRemoteSource
 
         var docs = await Task.WhenAll(offsets.Select(offset =>
             SourceHttp.GetJsonCachedAsync(_http, BuildListUrl(offset, pageSize, search), SourceHttp.ListTtl, ct)));
+
+        AppPaths.AppendDebugLog($"[tuf] 列表其余 {offsets.Count} 页 {sw.ElapsedMilliseconds}ms");
 
         try
         {

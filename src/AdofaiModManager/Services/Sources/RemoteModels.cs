@@ -197,8 +197,16 @@ public static class SourceHttp
             SourceCache.Set(url, body, ttl);
             return JsonDocument.Parse(body);
         }
-        catch
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
+            // 调用方主动取消（例如用户切换了来源）：原样抛出，不要退化成"用过期缓存"
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // 记一笔（第三方站慢/超时很常见，排查时要能看出是超时还是掉线）
+            AppPaths.AppendDebugLog($"[http] 请求失败（{ex.GetType().Name}）：{url} — {ex.Message}");
+
             // 网络失败时用过期缓存兜底（总比什么都没有强）
             if (SourceCache.TryGetStale(url, out var stale) && !string.IsNullOrWhiteSpace(stale))
             {
@@ -259,7 +267,10 @@ public static class SourceHttp
             UseProxy = true,   // 跟随系统代理（和主程序一致）
         };
 
-        var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(60) };
+        // 第三方源（TUF / modlist / modrift …）在国内网络下可能很慢（实测 TUF 列表接口
+        // 走代理要 50s+），所以给 30 秒：既不会像 60 秒那样"卡满一分钟"，
+        // 又比 20 秒更容得下"慢但能通"的站点。失败时会退回上次的缓存，不会白屏。
+        var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd(
             "Aurora/0.1.6 (+https://github.com/lishangi688/adofai-aurora)");
         return client;

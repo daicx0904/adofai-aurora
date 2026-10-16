@@ -346,7 +346,7 @@ public sealed class UpdateCenter
             try
             {
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                timeout.CancelAfter(TimeSpan.FromSeconds(20));
+                timeout.CancelAfter(TimeSpan.FromSeconds(30));
 
                 var page = await source.GetModsAsync(new RemoteModQuery(Page: 1, PageSize: 500), timeout.Token);
 

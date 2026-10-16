@@ -162,6 +162,15 @@ public partial class OnlineModsPage : Page
     /// </summary>
     private string _loadedFilter = string.Empty;
 
+    /// <summary>远程列表的"请求代号"：切来源/重新搜索时自增，用来丢掉过期结果。</summary>
+    private int _remoteRequestId;
+
+    /// <summary>当前这次远程加载的取消令牌（切来源时把上一次取消掉）。</summary>
+    private CancellationTokenSource? _remoteCts;
+
+    /// <summary>资源站"后台补页"的代号：重新搜索/切来源时自增，旧的补页循环会自己退出。</summary>
+    private int _siteFillId;
+
     private string CurrentFilterKey()
     {
         var sort = (SortCombo.SelectedItem as ComboBoxItem)?.Tag as string ?? string.Empty;
@@ -307,6 +316,12 @@ public partial class OnlineModsPage : Page
         }
 
         SetBusy(true);
+
+        if (!append)
+        {
+            SubtitleText.Text = $"正在从 {AppServices.SiteDisplayName} 加载…";
+        }
+
         try
         {
             if (!append)
@@ -323,54 +338,18 @@ public partial class OnlineModsPage : Page
 
             var result = await client.GetModsAsync(page, _pageSize, search, type, null, sort);
 
-            if (!append)
-            {
-                _mods.Clear();
-                _page = 1;
-                _allLoaded = false;
-            }
-
-            _loadedFilter = filterKey;
-            _page = result.Page <= 0 ? page : result.Page;
-            _total = result.Total;
-
-            var known = new HashSet<string>(_mods.Select(m => m.Id), StringComparer.OrdinalIgnoreCase);
-
-            // 先算好每个条目的本地状态，再排序。
-            // （原来是在 OrderBy 里顺手调用 ApplyLocalState，排序时状态还是上一轮的，
-            //   "可更新置顶"其实一直没生效）
-            foreach (var item in result.Items)
-            {
-                ApplyLocalState(item);
-            }
-
-            // 可更新的置顶（保持接口原始顺序，每页内部这样排）
-            foreach (var item in result.Items.OrderByDescending(i => i.LocalState == "可更新" ? 1 : 0))
-            {
-                if (known.Add(item.Id))
-                {
-                    _mods.Add(item);
-                }
-            }
-
-            _allLoaded = result.Items.Count == 0 || (_total > 0 && _mods.Count >= _total);
-
-            if (!append)
-            {
-                UpdateTypeFilter(result.Items);
-            }
-
-            UpdateFooter();
-            _ = LoadIconsAsync(_mods.ToList());
-
-            if (!append && _mods.Count > 0)
-            {
-                ModList.SelectedIndex = 0;
-            }
+            ApplySitePage(result, append, filterKey);
 
             SubtitleText.Text = _mods.Count == 0
                 ? "没有找到匹配的 mod。"
                 : $"{AppServices.SiteDisplayName} 共 {result.Total} 个资源，已加载 {_mods.Count} 个。";
+
+            // 首屏出来以后，后台把剩下的页也补齐（往下滚就不会"划到底就没了"）
+            if (!append && !_allLoaded)
+            {
+                var fillId = ++_siteFillId;
+                _ = FillRemainingSitePagesAsync(client, filterKey, search, type, sort, fillId);
+            }
         }
         catch (AdofaiToolsException ex)
         {
@@ -380,6 +359,110 @@ public partial class OnlineModsPage : Page
         finally
         {
             SetBusy(false);
+        }
+    }
+
+    /// <summary>把资源站的一页结果铺到列表上（首次加载 / 滚动加载 / 后台补页共用）。</summary>
+    private void ApplySitePage(ModListPage result, bool append, string filterKey)
+    {
+        if (!append)
+        {
+            _mods.Clear();
+            _page = 1;
+            _allLoaded = false;
+        }
+
+        _loadedFilter = filterKey;
+        _page = result.Page <= 0 ? Math.Max(1, _page) : result.Page;
+        _total = result.Total;
+
+        var known = new HashSet<string>(_mods.Select(m => m.Id), StringComparer.OrdinalIgnoreCase);
+
+        // 先算好每个条目的本地状态，再排序。
+        // （原来是在 OrderBy 里顺手调用 ApplyLocalState，排序时状态还是上一轮的，
+        //   "可更新置顶"其实一直没生效）
+        foreach (var item in result.Items)
+        {
+            ApplyLocalState(item);
+        }
+
+        // 可更新的置顶（保持接口原始顺序，每页内部这样排）
+        foreach (var item in result.Items.OrderByDescending(i => i.LocalState == "可更新" ? 1 : 0))
+        {
+            if (known.Add(item.Id))
+            {
+                _mods.Add(item);
+            }
+        }
+
+        _allLoaded = result.Items.Count == 0 || (_total > 0 && _mods.Count >= _total);
+
+        if (!append)
+        {
+            UpdateTypeFilter(result.Items);
+        }
+
+        UpdateFooter();
+        _ = LoadIconsAsync(_mods.ToList());
+
+        if (!append && _mods.Count > 0)
+        {
+            ModList.SelectedIndex = 0;
+        }
+    }
+
+    /// <summary>资源站：后台把剩余页补齐（会被新的搜索/切源打断）。</summary>
+    private async Task FillRemainingSitePagesAsync(
+        AdofaiToolsClient client,
+        string filterKey,
+        string? search,
+        string? type,
+        string? sort,
+        int fillId)
+    {
+        try
+        {
+            var rounds = 0;
+
+            while (fillId == _siteFillId && !_allLoaded && rounds++ < 60)
+            {
+                if (_remoteSource is not null || CurrentFilterKey() != filterKey || _loadedFilter != filterKey)
+                {
+                    return;
+                }
+
+                var next = _page + 1;
+                var result = await client.GetModsAsync(next, _pageSize, search, type, null, sort);
+
+                if (fillId != _siteFillId)
+                {
+                    return;
+                }
+
+                var before = _mods.Count;
+                ApplySitePage(result, append: true, filterKey);
+
+                if (result.Items.Count == 0 || _mods.Count == before)
+                {
+                    _allLoaded = true;
+                    break;
+                }
+
+                SubtitleText.Text =
+                    $"{AppServices.SiteDisplayName} 共 {_total} 个资源，已加载 {_mods.Count} / {_total}（后台补全中…）";
+            }
+        }
+        catch (Exception ex)
+        {
+            AppPaths.AppendDebugLog($"[site] 后台补页失败：{ex.Message}");
+        }
+        finally
+        {
+            if (fillId == _siteFillId && _mods.Count > 0)
+            {
+                UpdateFooter();
+                SubtitleText.Text = $"{AppServices.SiteDisplayName} 共 {_total} 个资源，已加载 {_mods.Count} 个。";
+            }
         }
     }
 
@@ -595,6 +678,7 @@ public partial class OnlineModsPage : Page
         _remoteDetail = null;
         _detail = null;
 
+        _siteFillId++;      // 停掉上一次的后台补页
         _mods.Clear();
         _page = 1;
         _total = 0;
@@ -604,6 +688,7 @@ public partial class OnlineModsPage : Page
         _detailRequestId++;
         DetailPanel.DataContext = null;
         DetailScroll.Visibility = Visibility.Collapsed;
+        DetailEmpty.Text = "从左侧选择一个 mod 查看详情";
         DetailEmpty.Visibility = Visibility.Visible;
         SetModPageLink(null);
 
@@ -667,6 +752,14 @@ public partial class OnlineModsPage : Page
 
     private async Task FetchRemoteAsync(IRemoteSource source, int page, bool append)
     {
+        // 每次加载给一个自增号：切换来源 / 重新搜索时，旧的请求作废（否则旧结果会盖回界面上）
+        var requestId = ++_remoteRequestId;
+
+        _remoteCts?.Cancel();
+        _remoteCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _remoteCts = cts;
+
         if (!append)
         {
             LoadInstalled();
@@ -686,15 +779,7 @@ public partial class OnlineModsPage : Page
 
         // 缓存键：来源 + 查询条件。用来"先显示上次的结果，再后台刷新"，
         // 这样切来源 / 刷新时不会白屏干等（第三方站有时要好几秒）。
-        var cacheKey = ApiCache.Key(
-            "remotepage",
-            source.Id,
-            page.ToString(),
-            _pageSize.ToString(),
-            search,
-            category,
-            sort.ToString(),
-            filterKey);
+        var cacheKey = RemotePageCacheKey(source, query, filterKey);
 
         var shownFromCache = false;
 
@@ -718,7 +803,13 @@ public partial class OnlineModsPage : Page
             AppPaths.AppendDebugLog(
                 $"[remote] {source.Id} page={page} search={search ?? "-"} sort={sort} category={category ?? "-"}");
 
-            var result = await source.GetModsAsync(query);
+            var result = await source.GetModsAsync(query, cts.Token);
+
+            if (requestId != _remoteRequestId)
+            {
+                // 这次的结果已经过期（用户又换了来源/条件），直接丢掉
+                return;
+            }
 
             ApiCache.Set(cacheKey, result);
 
@@ -728,11 +819,28 @@ public partial class OnlineModsPage : Page
             SubtitleText.Text = _mods.Count == 0
                 ? $"{source.DisplayName}：没有找到匹配的 mod。"
                 : $"{source.DisplayName} 共 {result.Total} 个资源，已加载 {_mods.Count} 个。";
+
+            // 首屏出来以后，后台把剩下的页也补齐：
+            // 这样往下滚只会"顿一下"，不会"划到底就没了"。
+            if (!append && !_allLoaded)
+            {
+                _ = FillRemainingPagesAsync(source, filterKey, search, category, sort, requestId, cts.Token);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 被更新的一次加载取代了：什么都不做（界面已经由新请求负责）
         }
         catch (Exception ex)
         {
+            if (requestId != _remoteRequestId)
+            {
+                return;
+            }
+
             // 失败时**保留已经显示的内容**（缓存里那份或上一页），只提示 + 给个「重试」
             RetryButton.Visibility = Visibility.Visible;
+            AppPaths.AppendDebugLog($"[remote] {source.Id} 加载失败：{ex.GetType().Name} {ex.Message}");
             Report(false, $"从 {source.DisplayName} 获取失败：{ex.Message}");
 
             SubtitleText.Text = _mods.Count > 0
@@ -741,14 +849,119 @@ public partial class OnlineModsPage : Page
         }
         finally
         {
-            SetBusy(false);
+            if (requestId == _remoteRequestId)
+            {
+                SetBusy(false);
+            }
+        }
+    }
+
+    /// <summary>远程列表某一页的缓存键（来源 + 查询条件 + 页码）。</summary>
+    private static string RemotePageCacheKey(IRemoteSource source, RemoteModQuery query, string filterKey) =>
+        ApiCache.Key(
+            "remotepage",
+            source.Id,
+            query.Page.ToString(),
+            query.PageSize.ToString(),
+            query.Search,
+            query.Category,
+            query.Sort.ToString(),
+            filterKey);
+
+    /// <summary>
+    /// 后台把剩余页补齐（首屏已经显示出来了，这里只是"悄悄补全"）。
+    /// - 每补一页就追加进列表、更新"已加载 N / 总数"，用户可以直接滚着看；
+    /// - 会被新的加载取消 / 作废（切来源、改搜索条件时）；
+    /// - 每页也写进缓存，下次打开能更快铺满。
+    /// </summary>
+    private async Task FillRemainingPagesAsync(
+        IRemoteSource source,
+        string filterKey,
+        string? search,
+        string? category,
+        RemoteSort sort,
+        int requestId,
+        CancellationToken ct)
+    {
+        try
+        {
+            var rounds = 0;
+
+            while (!ct.IsCancellationRequested && requestId == _remoteRequestId && !_allLoaded && rounds++ < 60)
+            {
+                if (CurrentFilterKey() != filterKey || _loadedFilter != filterKey)
+                {
+                    return;     // 用户改了筛选条件：交给新的那一次加载
+                }
+
+                var next = _page + 1;
+                var query = new RemoteModQuery(next, _pageSize, search, category, sort);
+
+                AppPaths.AppendDebugLog($"[remote] {source.Id} 后台补页 page={next}");
+
+                var page = await source.GetModsAsync(query, ct);
+
+                if (requestId != _remoteRequestId)
+                {
+                    return;
+                }
+
+                ApiCache.Set(RemotePageCacheKey(source, query, filterKey), page);
+
+                var before = _mods.Count;
+                ShowRemotePage(page, append: true);
+
+                if (page.Items.Count == 0 || _mods.Count == before)
+                {
+                    // 后面没有了（或服务器把末尾页又返回了一遍）：收工
+                    _allLoaded = true;
+                    break;
+                }
+
+                SubtitleText.Text =
+                    $"{source.DisplayName} 共 {_total} 个资源，已加载 {_mods.Count} / {_total}（后台补全中…）";
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 被新的加载取代：交给新请求
+        }
+        catch (Exception ex)
+        {
+            // 后台补页失败不打扰用户：已经看到的内容还在，滚到底还能手动重试
+            AppPaths.AppendDebugLog($"[remote] 后台补页失败：{ex.Message}");
+        }
+        finally
+        {
+            if (requestId == _remoteRequestId && _mods.Count > 0)
+            {
+                UpdateFooter();
+                SubtitleText.Text = $"{source.DisplayName} 共 {_total} 个资源，已加载 {_mods.Count} 个。";
+            }
         }
     }
 
     private async Task LoadRemoteDetailAsync(IRemoteSource source, ModListItem item, int requestId)
     {
+        var cacheKey = ApiCache.Key("remotedetail", source.Id, item.Slug);
+        var fromCache = ApiCache.TryGetStale<RemoteModDetail>(cacheKey, out var cachedDetail) && cachedDetail is not null;
+        AppPaths.AppendDebugLog($"[remote] {source.Id} 详情 {item.Slug} 缓存={(fromCache ? "命中" : "未命中")}");
+
         try
         {
+            // ① 先把上次缓存的详情显示出来（点一下就有内容），再后台刷新
+            if (fromCache && cachedDetail is not null)
+            {
+                RenderRemoteDetail(source, item, cachedDetail);
+            }
+            else
+            {
+                // 没有缓存：先说清楚"正在加载"，别让右侧空着不动
+                DetailEmpty.Text = "正在加载 mod 详情…";
+                DetailEmpty.Visibility = Visibility.Visible;
+                DetailScroll.Visibility = Visibility.Collapsed;
+            }
+
             var detail = await source.GetModDetailAsync(item.Slug);
 
             if (requestId != _detailRequestId)
@@ -758,47 +971,79 @@ public partial class OnlineModsPage : Page
 
             if (detail is null)
             {
+                ResetDetailPlaceholder();
                 Report(false, $"{source.DisplayName} 上没有找到这个 mod 的详情。");
                 return;
             }
 
-            _remoteDetail = detail;
-            _detail = RemoteCatalog.ToDetail(detail);
-
-            DetailPanel.DataContext = _detail;
-            DetailEmpty.Visibility = Visibility.Collapsed;
-            DetailScroll.Visibility = Visibility.Visible;
-
-            DetailIcon.Source = item.IconSource ?? await ImageLoader.LoadAsync(detail.Mod.IconUrl);
-
-            // 回链：第三方源优先用它自己的详情页（modlist 的作者希望这样署名），否则用 mod 的主页
-            SetModPageLink(source.ModPageUrl(item.Slug) ?? detail.Mod.HomepageUrl);
-
-            PopulateVersions(_detail);
-
-            var melon = detail.Mod.Loader == ModLoader.MelonLoader;
-            InstallButton.IsEnabled = !melon;
-            InstallButton.Content = melon
-                ? "需要 MelonLoader"
-                : item.LocalState switch
-                {
-                    "可更新" => "更新",
-                    "已安装" => "重新安装",
-                    _ => "安装",
-                };
-
-            InstallStatusText.Text = melon
-                ? "⚠ 这个 mod 需要 MelonLoader 加载器，Aurora 目前只支持 UMM，无法自动安装。可到该 mod 的发布页（简介里有链接）手动下载。"
-                : string.Empty;
-
-            // 收藏对所有来源都生效
-            FavoriteButton.IsEnabled = true;
-            FavoriteButton.Content = "收藏";
+            ApiCache.Set(cacheKey, detail);
+            RenderRemoteDetail(source, item, detail);
         }
         catch (Exception ex)
         {
+            if (requestId != _detailRequestId)
+            {
+                return;
+            }
+
+            ResetDetailPlaceholder();
             Report(false, $"加载 {source.DisplayName} 详情失败：{ex.Message}");
         }
+    }
+
+    /// <summary>详情还没出来时，右侧恢复成"请选择"的提示。</summary>
+    private void ResetDetailPlaceholder()
+    {
+        if (DetailScroll.Visibility == Visibility.Visible)
+        {
+            return;     // 已经有内容了（例如缓存那份），保持不动
+        }
+
+        DetailEmpty.Text = "从左侧选择一个 mod 查看详情";
+        DetailEmpty.Visibility = Visibility.Visible;
+    }
+
+    private async void RenderRemoteDetail(IRemoteSource source, ModListItem item, RemoteModDetail detail)
+    {
+        _remoteDetail = detail;
+        _detail = RemoteCatalog.ToDetail(detail);
+
+        DetailPanel.DataContext = _detail;
+        DetailEmpty.Visibility = Visibility.Collapsed;
+        DetailScroll.Visibility = Visibility.Visible;
+
+        try
+        {
+            DetailIcon.Source = item.IconSource ?? await ImageLoader.LoadAsync(detail.Mod.IconUrl);
+        }
+        catch
+        {
+            // 图标加载失败不影响详情
+        }
+
+        // 回链：第三方源优先用它自己的详情页（modlist 的作者希望这样署名），否则用 mod 的主页
+        SetModPageLink(source.ModPageUrl(item.Slug) ?? detail.Mod.HomepageUrl);
+
+        PopulateVersions(_detail);
+
+        var melon = detail.Mod.Loader == ModLoader.MelonLoader;
+        InstallButton.IsEnabled = !melon;
+        InstallButton.Content = melon
+            ? "需要 MelonLoader"
+            : item.LocalState switch
+            {
+                "可更新" => "更新",
+                "已安装" => "重新安装",
+                _ => "安装",
+            };
+
+        InstallStatusText.Text = melon
+            ? "⚠ 这个 mod 需要 MelonLoader 加载器，Aurora 目前只支持 UMM，无法自动安装。可到该 mod 的发布页（简介里有链接）手动下载。"
+            : string.Empty;
+
+        // 收藏对所有来源都生效
+        FavoriteButton.IsEnabled = true;
+        FavoriteButton.Content = "收藏";
     }
 
     private async Task InstallRemoteAsync(IRemoteSource source)
@@ -911,6 +1156,22 @@ public partial class OnlineModsPage : Page
 
         try
         {
+            var detailCacheKey = ApiCache.Key("sitedetail", item.ResourceType ?? "MOD", item.Slug);
+            var hasCache = ApiCache.TryGetStale<ModDetail>(detailCacheKey, out var cachedDetail) && cachedDetail is not null;
+
+            // ① 有缓存就直接铺出来（点一下马上有内容），再后台刷新
+            if (hasCache && cachedDetail is not null)
+            {
+                RenderSiteDetail(item, cachedDetail);
+            }
+            else
+            {
+                // 没有缓存：先说清楚"正在加载"，别让右侧空着不动
+                DetailEmpty.Text = "正在加载 mod 详情…";
+                DetailEmpty.Visibility = Visibility.Visible;
+                DetailScroll.Visibility = Visibility.Collapsed;
+            }
+
             var detail = await client.GetModDetailAsync(item.ResourceType ?? "MOD", item.Slug);
 
             if (requestId != _detailRequestId)
@@ -919,38 +1180,55 @@ public partial class OnlineModsPage : Page
                 return;
             }
 
-            _detail = detail;
-            DetailPanel.DataContext = detail;
-            DetailEmpty.Visibility = Visibility.Collapsed;
-            DetailScroll.Visibility = Visibility.Visible;
-
-            DetailIcon.Source = item.IconSource ?? await ImageLoader.LoadAsync(detail.IconUrl);
-
-            SetModPageLink(detail.HomepageUrl ?? detail.SourceUrl);
-
-            PopulateVersions(detail);
-
-            InstallStatusText.Text = string.Empty;
-            InstallButton.IsEnabled = true;
-            InstallButton.Content = item.LocalState switch
-            {
-                "可更新" => "更新",
-                "已安装" => "重新安装",
-                _ => "安装",
-            };
-            UpdateFavoriteButton(detail.Id);
+            ApiCache.Set(detailCacheKey, detail);
+            RenderSiteDetail(item, detail);
             DebugLog($"详情已加载 -> {detail.DisplayName}");
         }
         catch (AdofaiToolsException ex)
         {
             DebugLog("AdofaiToolsException: " + ex.Message);
+            ResetDetailPlaceholder();
             Report(false, ex.Message);
         }
         catch (Exception ex)
         {
             DebugLog("Exception: " + ex);
+            ResetDetailPlaceholder();
             Report(false, $"加载详情失败：{ex.Message}");
         }
+    }
+
+    /// <summary>把资源站的一条详情铺到右侧（缓存里的旧详情 / 刚拉到的新详情共用）。</summary>
+    private async void RenderSiteDetail(ModListItem item, ModDetail detail)
+    {
+        _detail = detail;
+        DetailPanel.DataContext = detail;
+        DetailEmpty.Visibility = Visibility.Collapsed;
+        DetailScroll.Visibility = Visibility.Visible;
+
+        try
+        {
+            DetailIcon.Source = item.IconSource ?? await ImageLoader.LoadAsync(detail.IconUrl);
+        }
+        catch
+        {
+            // 图标加载失败不影响详情本身
+        }
+
+        SetModPageLink(detail.HomepageUrl ?? detail.SourceUrl);
+
+        PopulateVersions(detail);
+
+        InstallStatusText.Text = string.Empty;
+        InstallButton.IsEnabled = true;
+        InstallButton.Content = item.LocalState switch
+        {
+            "可更新" => "更新",
+            "已安装" => "重新安装",
+            _ => "安装",
+        };
+
+        UpdateFavoriteButton(detail.Id);
     }
 
     private async void Install_Click(object sender, RoutedEventArgs e)

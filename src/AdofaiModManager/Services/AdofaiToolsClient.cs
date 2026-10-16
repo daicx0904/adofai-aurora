@@ -280,7 +280,7 @@ public sealed class AdofaiToolsClient
 
     private static HttpClient CreateHttpClient()
     {
-        var client = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+        var client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("AdofaiModManager/0.1");
         return client;
     }
