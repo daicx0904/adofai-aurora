@@ -42,6 +42,9 @@ public sealed class SettingsService
         {
             Settings = new AppSettings();
         }
+
+        // 诊断日志开关跟设置走（默认开）
+        AppPaths.DiagnosticLogEnabled = Settings.DiagnosticLogging;
     }
 
     public void Save()

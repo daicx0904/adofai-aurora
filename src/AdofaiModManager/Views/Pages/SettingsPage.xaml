@@ -256,6 +256,35 @@
                        FontSize="12"
                        Opacity="0.5"
                        TextWrapping="Wrap" />
+
+            <!-- 诊断与反馈 -->
+            <TextBlock Margin="0,32,0,8" FontSize="16" FontWeight="SemiBold" Text="诊断与反馈" />
+            <CheckBox x:Name="DiagnosticLogBox"
+                      Checked="DiagnosticLog_Changed"
+                      Content="记录诊断日志（反馈问题时用，默认开启）"
+                      Unchecked="DiagnosticLog_Changed" />
+            <TextBlock Margin="0,8,0,0"
+                       FontSize="12"
+                       Opacity="0.6"
+                       TextWrapping="Wrap"
+                       Text="日志保存在本机用户目录，单文件最多 2 MB、超出自动轮转，写之前会脱敏 API key 和下载签名。关掉后只保留崩溃日志。" />
+            <StackPanel Margin="0,12,0,0" Orientation="Horizontal">
+                <ui:Button Click="OpenLogFolder_Click"
+                           Content="打开日志文件夹"
+                           Icon="{ui:SymbolIcon Symbol=FolderOpen24}" />
+                <ui:Button Margin="8,0,0,0"
+                           Click="ExportDiagnostics_Click"
+                           Content="导出诊断包"
+                           Icon="{ui:SymbolIcon Symbol=ArrowDownload24}" />
+                <ui:Button Margin="8,0,0,0"
+                           Click="ReportIssue_Click"
+                           Content="反馈问题" />
+            </StackPanel>
+            <TextBlock x:Name="DiagnosticsStatusText"
+                       Margin="0,10,0,0"
+                       FontSize="12"
+                       Opacity="0.75"
+                       TextWrapping="Wrap" />
         </StackPanel>
     </ScrollViewer>
 </Page>

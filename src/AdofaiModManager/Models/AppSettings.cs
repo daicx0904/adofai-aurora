@@ -55,4 +55,12 @@ public sealed class AppSettings
     /// 关闭：只查资源站，检查更快更安静（适合网络环境差的情况）。
     /// </summary>
     public bool CheckGitHubUpdates { get; set; } = true;
+
+    /// <summary>
+    /// 是否记录诊断日志（默认开）。
+    ///
+    /// 日志写在本机用户目录（%LocalAppData%\AdofaiModManager\logs），单文件封顶 2 MB、
+    /// 超了自动轮转，并会对 API key / 签名参数做脱敏。关掉后只保留崩溃日志。
+    /// </summary>
+    public bool DiagnosticLogging { get; set; } = true;
 }

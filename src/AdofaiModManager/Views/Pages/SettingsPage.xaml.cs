@@ -63,6 +63,7 @@ public partial class SettingsPage : Page
 
         CheckOnStartupBox.IsChecked = settings.CheckUpdatesOnStartup;
         CheckGitHubBox.IsChecked = settings.CheckGitHubUpdates;
+        DiagnosticLogBox.IsChecked = settings.DiagnosticLogging;
 
         UpdateGameStatus();
         UpdateGameVersionStatus();
@@ -373,6 +374,127 @@ public partial class SettingsPage : Page
 
         AppServices.Settings.Settings.CheckGitHubUpdates = CheckGitHubBox.IsChecked == true;
         AppServices.Settings.Save();
+    }
+
+    // ---------------- 诊断与反馈 ----------------
+
+    private void DiagnosticLog_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_ready)
+        {
+            return;
+        }
+
+        var enabled = DiagnosticLogBox.IsChecked == true;
+
+        AppServices.Settings.Settings.DiagnosticLogging = enabled;
+        AppPaths.DiagnosticLogEnabled = enabled;
+        AppServices.Settings.Save();
+
+        DiagnosticsStatusText.Text = enabled
+            ? "已开启：日志写在用户目录，反馈问题时可点「导出诊断包」发过来。"
+            : "已关闭：只会记录崩溃日志（crash.log）。";
+    }
+
+    private void OpenLogFolder_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Directory.CreateDirectory(AppPaths.LogDirectory);
+            Process.Start(new ProcessStartInfo(AppPaths.LogDirectory) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            DiagnosticsStatusText.Text = "打不开日志文件夹：" + ex.Message;
+        }
+    }
+
+    private void ReportIssue_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo("https://github.com/lishangi688/adofai-aurora/issues/new")
+            {
+                UseShellExecute = true,
+            });
+        }
+        catch
+        {
+            // 忽略
+        }
+    }
+
+    /// <summary>
+    /// 导出诊断包到桌面：日志（脱敏）+ 环境说明 + 设置文件（密钥字段打码）。
+    /// 用户反馈问题时发这一个 zip 就够了。
+    /// </summary>
+    private void ExportDiagnostics_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Directory.CreateDirectory(AppPaths.LogDirectory);
+
+            var stamp = DateTime.Now.ToString("yyyyMMdd-HHmm");
+            var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            var path = Path.Combine(desktop, $"Aurora-诊断-{stamp}.zip");
+
+            var utf8 = new System.Text.UTF8Encoding(false);
+
+            using (var zip = System.IO.Compression.ZipFile.Open(
+                       path, System.IO.Compression.ZipArchiveMode.Create))
+            {
+                // ① 日志（读取时再脱敏一次，双保险）
+                foreach (var log in Directory.GetFiles(AppPaths.LogDirectory, "*.log"))
+                {
+                    var entry = zip.CreateEntry("logs/" + Path.GetFileName(log));
+                    using var writer = new StreamWriter(entry.Open(), utf8);
+                    writer.Write(AppPaths.Redact(File.ReadAllText(log)));
+                }
+
+                // ② 环境说明
+                var settings = AppServices.Settings.Settings;
+
+                var sys = zip.CreateEntry("system.txt");
+                using (var writer = new StreamWriter(sys.Open(), utf8))
+                {
+                    writer.WriteLine(AppUpdateService.DescribeEnvironment());
+                    writer.WriteLine($"导出时间：{DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                    writer.WriteLine($"诊断日志：{(settings.DiagnosticLogging ? "开启" : "关闭")}");
+                    writer.WriteLine(
+                        $"游戏目录：{settings.GamePath ?? "(未设置)"}　存在="
+                        + Directory.Exists(settings.GamePath ?? string.Empty));
+                    writer.WriteLine($"当前来源：{AppServices.SiteDisplayName}");
+                }
+
+                // ③ 设置文件（密钥字段打码）
+                var configPath = AppServices.Settings.ConfigFilePath;
+                if (File.Exists(configPath))
+                {
+                    var cfg = zip.CreateEntry("settings.json");
+                    using var writer = new StreamWriter(cfg.Open(), utf8);
+                    writer.Write(AppPaths.Redact(File.ReadAllText(configPath)));
+                }
+            }
+
+            DiagnosticsStatusText.Text =
+                $"已导出：{path}\n日志里可能含有 24 小时有效的下载直链，建议私聊发送，不要贴到公开的地方。";
+
+            try
+            {
+                Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"")
+                {
+                    UseShellExecute = true,
+                });
+            }
+            catch
+            {
+                // 打不开资源管理器也不影响导出
+            }
+        }
+        catch (Exception ex)
+        {
+            DiagnosticsStatusText.Text = "导出失败：" + ex.Message;
+        }
     }
 
     // ---------------- 关于 ----------------

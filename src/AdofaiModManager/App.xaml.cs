@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Windows;
 using AdofaiModManager.Services;
 
@@ -21,6 +21,10 @@ public partial class App : Application
         base.OnStartup(e);
 
         AppServices.Initialize();
+
+        // 诊断日志从这一版起默认开启：每次启动写一行环境摘要（版本/系统/安装形态），
+        // 用户反馈问题时直接导出日志即可，不用再教他开环境变量。
+        AppPaths.StartSession(AppUpdateService.DescribeEnvironment());
 
         var theme = AppServices.Settings.Settings.Theme;
 
@@ -59,16 +63,7 @@ public partial class App : Application
             return;
         }
 
-        try
-        {
-            Directory.CreateDirectory(AppPaths.LogDirectory);
-            File.AppendAllText(
-                AppPaths.CrashLogPath,
-                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {exception}{Environment.NewLine}{Environment.NewLine}");
-        }
-        catch
-        {
-            // 忽略
-        }
+        // 带环境摘要（版本 / 系统 / 安装形态）写进 crash.log，并按 1 MB 轮转
+        AppPaths.AppendCrashLog(AppUpdateService.DescribeEnvironment(), exception);
     }
 }

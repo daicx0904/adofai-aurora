@@ -374,6 +374,31 @@ public static class AppUpdateService
     }
 
     /// <summary>
+    /// 一行环境摘要：版本 / 系统 / 架构 / 安装形态。
+    /// 会话头、崩溃日志、导出的诊断包都用它 —— 拿到日志一眼就能看出运行环境。
+    /// </summary>
+    public static string DescribeEnvironment()
+    {
+        string distribution;
+        try
+        {
+            distribution = Distribution switch
+            {
+                AppDistribution.Installed => "安装版",
+                AppDistribution.Portable => "绿色版",
+                _ => "未知形态",
+            };
+        }
+        catch
+        {
+            distribution = "未知形态";
+        }
+
+        return $"Aurora {CurrentVersion} / {System.Runtime.InteropServices.RuntimeInformation.OSDescription} / "
+               + $"{System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture} / {distribution}";
+    }
+
+    /// <summary>
     /// 判断当前跑的是安装版还是绿色版：
     /// Inno Setup 安装时会在注册表里写卸载项（含 InstallLocation），
     /// 如果该项指向的目录正好是当前程序所在目录，就说明是安装版。
