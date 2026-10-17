@@ -62,6 +62,10 @@ public partial class OnlineModsPage : Page
 
         _ready = true;
 
+        // 首屏也要显示署名：初始化时 SelectedIndex 的变化被 _ready 挡掉了，
+        // 这里补一次（否则默认的 ADOFAI Tools 会没有署名行）。
+        UpdateSourceCredit();
+
         if (AppPaths.DebugLogEnabled)
         {
             ModList.PreviewMouseLeftButtonDown += (_, _) => DebugLog("ListBox 收到 PreviewMouseLeftButtonDown");
@@ -618,6 +622,66 @@ public partial class OnlineModsPage : Page
         }
     }
 
+    /// <summary>
+    /// 更新列表上方的“数据来自谁”署名 + 回链。只对第三方来源显示
+    /// （TUF 站长要求：使用 TUF 的数据必须 properly credited and linked）。
+    /// </summary>
+    private void UpdateSourceCredit()
+    {
+        var remote = (SourceCombo.SelectedItem as SourceChoice)?.Source;
+
+        // ADOFAI Tools 这一项走的是"站点通道"（Source 为 null），
+        // 但它是默认来源、用得最多，同样要署名 —— 不能只有第三方有、它没有。
+        if (remote is null)
+        {
+            var siteUrl = AppServices.Settings.Settings.ApiBaseUrl?.Trim();
+
+            if (string.IsNullOrWhiteSpace(siteUrl))
+            {
+                SourceCreditText.Inlines.Clear();
+                SourceCreditText.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            ShowSourceCredit($"Mod 数据由 {AppServices.SiteDisplayName} 提供", siteUrl);
+            return;
+        }
+
+        var remoteSiteUrl = remote.SiteUrl;
+        if (string.IsNullOrWhiteSpace(remoteSiteUrl))
+        {
+            SourceCreditText.Inlines.Clear();
+            SourceCreditText.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var label = remote.Id switch
+        {
+            "tuf" => "Mod 数据与推荐由 TUF（The Universal Forums）提供",
+            "modlist" => "Mod 数据由 modlist.org 提供",
+            "modrift" => "Mod 数据由 modrift 提供",
+            _ => $"Mod 数据由 {remote.DisplayName} 提供",
+        };
+
+        ShowSourceCredit(label, remoteSiteUrl);
+    }
+
+    /// <summary>把"谁提供的数据 + 站点链接"写进署名行。</summary>
+    private void ShowSourceCredit(string label, string siteUrl)
+    {
+        SourceCreditText.Inlines.Clear();
+        SourceCreditText.Inlines.Add(new System.Windows.Documents.Run(label));
+        SourceCreditText.Inlines.Add(new System.Windows.Documents.Run("　·　"));
+
+        var link = new System.Windows.Documents.Hyperlink(new System.Windows.Documents.Run(siteUrl))
+        {
+            NavigateUri = new Uri(siteUrl),
+        };
+
+        SourceCreditText.Inlines.Add(link);
+        SourceCreditText.Visibility = Visibility.Visible;
+    }
+
     /// <summary>详情面板里的「在源站查看」链接（第三方源用于署名/回链；没有就隐藏）。</summary>
     private void SetModPageLink(string? url)
     {
@@ -675,6 +739,7 @@ public partial class OnlineModsPage : Page
         }
 
         _remoteSource = (SourceCombo.SelectedItem as SourceChoice)?.Source;
+        UpdateSourceCredit();
         _remoteDetail = null;
         _detail = null;
 

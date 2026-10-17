@@ -118,7 +118,7 @@ powershell -ExecutionPolicy Bypass `
 
 - 感谢 [ADOFAI Tools](https://adofaitools.top/) 站长 [small-lizi](https://github.com/small-lizi/) 允许 Aurora 接入，并提供在线 Mod 数据和下载服务。相关代码见 [ADOFAI Tools 仓库](https://github.com/small-lizi/ADOFAI-Tools)。
 - 感谢 [modrift](https://modrift.org) 作者 Ilythra 提供公开 API，并允许 Aurora 接入。
-- 感谢 [TUF（The Universal Forums）](https://tuforums.com/mods) 维护团队（[GitHub：T21C](https://github.com/T21C)）提供 Mod 目录和下载服务。
+- 感谢 [TUF（The Universal Forums）](https://tuforums.com/mods) 维护团队（[GitHub：T21C](https://github.com/T21C)）提供 Mod 目录、推荐与下载服务。Aurora 内展示的 TUF 数据会标注来源并回链到 TUF 站点。
 - 感谢 [modlist.org](https://modlist.org) 作者 square3ang 提供公开 API，并允许 Aurora 接入。相关项目见 [modlist-org](https://github.com/modlist-org)。
 - 感谢 [UnityModManager](https://github.com/newman55/unity-mod-manager) 及其作者 [newman55](https://github.com/newman55/) 提供加载器基础。
 

@@ -194,17 +194,45 @@ public partial class FirstRunWizard : FluentWindow
         ImportKernelButton.IsEnabled = enabled;
     }
 
-    /// <summary>查一下资源站上的最新内核版本，供用户选择时参考。</summary>
+    private enum KernelChoice
+    {
+        None,
+        Bundled,
+        Site,
+    }
+
+    /// <summary>查一下资源站上的最新内核版本，并给出"用哪个"的推荐。</summary>
     private async Task UpdateSiteKernelInfoAsync()
     {
         var loader = CreateLoader();
         var bundled = loader is null ? null : new KernelService(loader).GetBundled();
         var bundledText = bundled?.Version ?? "缺失";
 
+        // 第 2 步没填 API key 时，站点这条路走不通（也下载不了），直接推荐内置
+        var hasKey = !string.IsNullOrWhiteSpace(AppServices.Settings.Settings.ApiKey);
+
+        if (!hasKey)
+        {
+            SiteKernelText.Text = $"（未填写 API key，不查询站点）　Aurora 内置内核：{bundledText}";
+
+            if (bundled is null)
+            {
+                Recommend(KernelChoice.None, "内置内核缺失，请重新安装 Aurora，或先从 ADOFAITools 配置好 API key 再回来。");
+            }
+            else
+            {
+                Recommend(KernelChoice.Bundled,
+                    $"没有填写 ADOFAITools 的 API key，推荐直接用内置内核（{bundledText}）——不用登录，也不受网络影响。");
+            }
+
+            return;
+        }
+
         var client = AppServices.CreateApiClient();
         if (client is null)
         {
-            SiteKernelText.Text = $"（未配置 ADOFAITools）　Aurora 内置内核：{bundledText}";
+            SiteKernelText.Text = $"（ADOFAITools 地址为空）　Aurora 内置内核：{bundledText}";
+            Recommend(KernelChoice.Bundled, $"推荐使用内置内核（{bundledText}）。");
             return;
         }
 
@@ -214,14 +242,65 @@ public partial class FirstRunWizard : FluentWindow
         {
             var site = await KernelBootstrapper.FindLatestSiteKernelAsync(client);
 
-            SiteKernelText.Text = site is null
-                ? $"ADOFAITools 上没有找到 UnityModManager　·　Aurora 内置内核：{bundledText}"
-                : $"ADOFAITools 最新内核：{site.Value.VersionId}　·　Aurora 内置内核：{bundledText}";
+            if (site is null)
+            {
+                SiteKernelText.Text = $"ADOFAITools 上没有找到 UnityModManager　·　Aurora 内置内核：{bundledText}";
+                Recommend(KernelChoice.Bundled, $"站点上没有内核，推荐使用内置内核（{bundledText}）。");
+                return;
+            }
+
+            var siteVersion = site.Value.VersionId;
+            SiteKernelText.Text = $"ADOFAITools 最新内核：{siteVersion}　·　Aurora 内置内核：{bundledText}";
+
+            if (bundled is null)
+            {
+                Recommend(KernelChoice.Site, $"内置内核缺失，推荐从 ADOFAITools 获取 {siteVersion}。");
+                return;
+            }
+
+            var diff = KernelService.CompareVersions(siteVersion, bundled.Version);
+
+            if (diff > 0)
+            {
+                Recommend(KernelChoice.Site,
+                    $"站点上的 {siteVersion} 比内置的 {bundledText} 新，推荐从 ADOFAITools 获取最新版。");
+            }
+            else if (diff == 0)
+            {
+                Recommend(KernelChoice.Bundled,
+                    $"两边都是 {siteVersion}，推荐用内置内核——不用下载，也不受网络影响。");
+            }
+            else
+            {
+                Recommend(KernelChoice.Bundled,
+                    $"内置的 {bundledText} 比站点的 {siteVersion} 还新，推荐用内置内核。");
+            }
         }
         catch (AdofaiToolsException ex)
         {
             SiteKernelText.Text = $"ADOFAITools 暂时不可用（{ex.Message}）　·　可用内置内核：{bundledText}";
+            Recommend(KernelChoice.Bundled, $"站点连不上，推荐使用内置内核（{bundledText}）。");
         }
+    }
+
+    /// <summary>
+    /// 把"推荐哪一个"落到界面上：推荐的那个用主按钮样式 + 文案带「推荐」，
+    /// 再用一句话说明为什么（版本对比 / 没填 key / 站点连不上）。
+    /// </summary>
+    private void Recommend(KernelChoice choice, string reason)
+    {
+        var bundledRecommended = choice == KernelChoice.Bundled;
+        var siteRecommended = choice == KernelChoice.Site;
+
+        InstallBundledButton.Appearance = bundledRecommended ? ControlAppearance.Primary : ControlAppearance.Secondary;
+        InstallFromSiteButton.Appearance = siteRecommended ? ControlAppearance.Primary : ControlAppearance.Secondary;
+
+        InstallBundledButton.Content = bundledRecommended ? "使用内置内核（推荐）" : "使用内置内核";
+        // 不写「最新」：站点版本可能比内置还旧（点下去等于降级），上面那行已经列出两边版本
+        InstallFromSiteButton.Content = siteRecommended ? "从 ADOFAITools 获取（推荐）" : "从 ADOFAITools 获取";
+
+        KernelAdviceText.Text = "💡 " + reason;
+        KernelAdviceBox.Visibility = Visibility.Visible;
     }
 
     private async void InstallFromSite_Click(object sender, RoutedEventArgs e)

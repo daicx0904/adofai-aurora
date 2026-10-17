@@ -35,6 +35,8 @@ public sealed class ModlistSource : IRemoteSource
     public string? ModPageUrl(string slug) =>
         string.IsNullOrWhiteSpace(slug) ? null : $"{BaseUrl}/mods/{Uri.EscapeDataString(slug)}";
 
+    public string? SiteUrl => "https://modlist.org";
+
     public bool RequiresKey => false;
 
     /// <summary>modlist 的固定分类（用来填界面上的「类型」筛选）。</summary>

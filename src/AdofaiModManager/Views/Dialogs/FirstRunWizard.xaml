@@ -67,7 +67,7 @@
                 <TextBlock Margin="0,8,0,0"
                            Opacity="0.75"
                            TextWrapping="Wrap"
-                           Text="mod 需要游戏内的 UnityModManager 加载器才能生效。推荐从 ADOFAITools 装最新版；连不上时也可以用 Aurora 内置的内核。" />
+                           Text="mod 需要游戏内的 UnityModManager 加载器才能生效。下面会按版本号告诉你哪个更合适；两种都行，装完这里显示「已就绪」就可以继续。" />
 
                 <Border Margin="0,16,0,0"
                         Padding="16"
@@ -87,7 +87,6 @@
 
                 <StackPanel Margin="0,14,0,0" Orientation="Horizontal">
                     <ui:Button x:Name="InstallFromSiteButton"
-                               Appearance="Primary"
                                Click="InstallFromSite_Click"
                                Content="从 ADOFAITools 获取最新"
                                Icon="{ui:SymbolIcon Symbol=CloudArrowDown24}" />
@@ -100,6 +99,20 @@
                                Click="ImportKernel_Click"
                                Content="导入本地 zip" />
                 </StackPanel>
+
+                <!-- 推荐用哪个（按版本号 / 有没有填 API key 自动判断） -->
+                <Border x:Name="KernelAdviceBox"
+                        Margin="0,12,0,0"
+                        Padding="12,10"
+                        Visibility="Collapsed"
+                        Background="{DynamicResource AmmCardBackgroundBrush}"
+                        BorderBrush="{DynamicResource AmmCardBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                    <TextBlock x:Name="KernelAdviceText"
+                               FontWeight="SemiBold"
+                               TextWrapping="Wrap" />
+                </Border>
                 <TextBlock Margin="0,12,0,0"
                            FontSize="12"
                            Opacity="0.6"
@@ -113,7 +126,7 @@
                 <TextBlock Margin="0,8,0,0"
                            Opacity="0.75"
                            TextWrapping="Wrap"
-                           Text="填上 ADOFAITools 的 API key 就能在线浏览、下载 mod；下一步装加载器时也会优先用它取最新内核。跳过也没关系——Aurora 仍可管理本地已有的 mod，并可用内置内核离线安装，之后可在「设置」里随时填写。" />
+                           Text="填上 ADOFAITools 的 API key 就能在线浏览、下载 mod；下一步装加载器时会顺便对比版本——站点有更新才推荐从站点取，否则用内置的更快。跳过也没关系：Aurora 仍可管理本地已有的 mod，并可用内置内核离线安装，之后可在「设置」里随时填写。" />
 
                 <TextBlock Margin="0,16,0,4" FontSize="12" Opacity="0.6" Text="ADOFAITools 地址" />
                 <ui:TextBox x:Name="ApiBaseBox" TextChanged="ApiBaseBox_TextChanged" />

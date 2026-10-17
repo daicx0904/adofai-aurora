@@ -59,6 +59,8 @@ public sealed class ModriftSource : IRemoteSource
     public string? ModPageUrl(string slug) =>
         string.IsNullOrWhiteSpace(slug) ? null : $"{BaseUrl}/mod/{Uri.EscapeDataString(slug)}";
 
+    public string? SiteUrl => "https://modrift.org";
+
     public async Task<RemoteModPage> GetModsAsync(RemoteModQuery query, CancellationToken ct = default)
     {
         var page = Math.Max(1, query.Page);

@@ -102,6 +102,12 @@ public interface IRemoteSource
     /// <summary>这个 mod 在源站上的页面地址（用于署名/回链；没有就返回 null）。</summary>
     string? ModPageUrl(string slug);
 
+    /// <summary>
+    /// 站点主页（用于界面上标注"数据来自谁"并回链）。
+    /// TUF 的站长明确要求：使用 TUF 的数据必须 properly credited and linked。
+    /// </summary>
+    string? SiteUrl => null;
+
     Task<RemoteModPage> GetModsAsync(RemoteModQuery query, CancellationToken ct = default);
 
     Task<RemoteModDetail?> GetModDetailAsync(string slug, CancellationToken ct = default);

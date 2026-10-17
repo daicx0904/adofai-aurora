@@ -36,6 +36,14 @@
                            Content="重试"
                            Visibility="Collapsed" />
             </StackPanel>
+
+            <!-- 第三方来源的署名 + 回链（TUF 站长明确要求 credited and linked） -->
+            <TextBlock x:Name="SourceCreditText"
+                       Margin="0,6,0,0"
+                       FontSize="12"
+                       Opacity="0.55"
+                       TextWrapping="Wrap"
+                       Visibility="Collapsed" />
         </StackPanel>
 
         <Grid Grid.Row="1" Margin="0,14,0,0">

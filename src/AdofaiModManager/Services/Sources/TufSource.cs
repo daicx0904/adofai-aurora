@@ -34,6 +34,9 @@ public sealed class TufSource : IRemoteSource
     /// <summary>TUF 目前没有可用的 mod 详情页地址。</summary>
     public string? ModPageUrl(string slug) => null;
 
+    /// <summary>TUF 站点（署名 + 回链用；TUF 站长要求必须标注来源并附链接）。</summary>
+    public string? SiteUrl => "https://tuforums.com/mods";
+
     /// <summary>TUF 的标签（用来填界面上的「类型」筛选）。</summary>
     public IReadOnlyList<string> Categories { get; } =
         ["Gameplay", "Quality Of Life", "Editor", "Jokes", "Overlay", "Dependency"];
