@@ -57,7 +57,12 @@ public sealed record RemoteMod(
     long Likes,
     string? HomepageUrl,
     DateTime? UpdatedAt,
-    ModLoader Loader);
+    ModLoader Loader,
+    /// <summary>
+    /// 站点上的资源类型。modrift 用这个区分 mod / resourcepack / shader / plugin / library / tool / other；
+    /// 其它来源都只有 mod，保持默认值即可。
+    /// </summary>
+    string ResourceType = "mod");
 
 public sealed record RemoteModPage(IReadOnlyList<RemoteMod> Items, int Total, int Page, int PageSize);
 

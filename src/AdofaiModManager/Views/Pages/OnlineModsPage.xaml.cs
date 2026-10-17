@@ -1027,24 +1027,45 @@ public partial class OnlineModsPage : Page
         PopulateVersions(_detail);
 
         var melon = detail.Mod.Loader == ModLoader.MelonLoader;
-        InstallButton.IsEnabled = !melon;
-        InstallButton.Content = melon
-            ? "需要 MelonLoader"
-            : item.LocalState switch
-            {
-                "可更新" => "更新",
-                "已安装" => "重新安装",
-                _ => "安装",
-            };
 
-        InstallStatusText.Text = melon
-            ? "⚠ 这个 mod 需要 MelonLoader 加载器，Aurora 目前只支持 UMM，无法自动安装。可到该 mod 的发布页（简介里有链接）手动下载。"
-            : string.Empty;
+        // modrift 上混着资源包、着色器、插件等非 mod 条目：它们不是 UMM Mod，装不了。
+        // 别让用户点"安装"然后失败，直接说清楚、并引导去原站页面下载。
+        var isMod = string.Equals(detail.Mod.ResourceType, "mod", StringComparison.OrdinalIgnoreCase);
+
+        InstallButton.IsEnabled = !melon && isMod;
+        InstallButton.Content = !isMod
+            ? "不是 Mod"
+            : melon
+                ? "需要 MelonLoader"
+                : item.LocalState switch
+                {
+                    "可更新" => "更新",
+                    "已安装" => "重新安装",
+                    _ => "安装",
+                };
+
+        InstallStatusText.Text = !isMod
+            ? $"⚠ 这是 {source.DisplayName} 上的「{ResourceTypeLabel(detail.Mod.ResourceType)}」，不是 UnityModManager 的 Mod，Aurora 无法安装。可用上面的链接打开原站页面手动下载。"
+            : melon
+                ? "⚠ 这个 mod 需要 MelonLoader 加载器，Aurora 目前只支持 UMM，无法自动安装。可到该 mod 的发布页（简介里有链接）手动下载。"
+                : string.Empty;
 
         // 收藏对所有来源都生效
         FavoriteButton.IsEnabled = true;
         FavoriteButton.Content = "收藏";
     }
+
+    /// <summary>把 modrift 的 resourceType 翻成用户看得懂的字（其它来源只有 mod，用不到）。</summary>
+    private static string ResourceTypeLabel(string kind) => kind.Trim().ToLowerInvariant() switch
+    {
+        "resourcepack" => "资源包 / 预设",
+        "shader" => "着色器",
+        "plugin" => "插件",
+        "library" => "运行库",
+        "tool" => "工具",
+        "other" => "其它资源",
+        _ => "非 Mod 资源",
+    };
 
     private async Task InstallRemoteAsync(IRemoteSource source)
     {

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
@@ -17,7 +18,8 @@ namespace AdofaiModManager.Services.Sources;
 ///  · "最新版本"可能**没有文件**（站点允许发空版本），必须跳过，否则下载必失败；
 ///  · 一个版本可能有**多个文件**（按游戏版本分流，例：+adofai_v2 / +adofai_v3），
 ///    下载地址也不同（靠 gameVersion 参数选文件），所以要按当前游戏版本挑；
-///  · 下载地址形如 <c>/v1/mod/{slug}@{version}:download?loader=..&amp;gameVersion=..</c>，直接拼站点前缀用即可；
+///  · 下载地址形如 <c>/v1/{resourceType}/{slug}@{version}:download?loader=..&amp;gameVersion=..</c>
+///    （resourceType 可能是 mod / resourcepack / …，直接取接口返回的 downloadUrls 最稳，不要自己拼 mod）；
 ///  · <c>q</c> 是"未转义正则"（文档「已知问题」#12），搜索词先 Regex.Escape；
 ///  · 图标不是直链：<c>iconUrl</c> 只是文件名，真正的地址是 <c>/api/mods/{_id}/icon/raw</c>；部分 mod 没有图标。
 /// </summary>
@@ -27,6 +29,13 @@ public sealed class ModriftSource : IRemoteSource
     private const string Game = "adofai";
 
     private readonly HttpClient _http;
+
+    /// <summary>
+    /// slug → 资源类型（mod / resourcepack / …）。
+    /// 站点的列表里混着多种类型，而**版本接口必须带对的 ?type**（不带会 500），
+    /// 所以拿到条目时先记下来，后面取版本/下载时用。
+    /// </summary>
+    private readonly ConcurrentDictionary<string, string> _kindBySlug = new(StringComparer.OrdinalIgnoreCase);
 
     public ModriftSource(HttpClient? http = null) => _http = http ?? SourceHttp.CreateClient();
 
@@ -105,9 +114,13 @@ public sealed class ModriftSource : IRemoteSource
 
     public async Task<RemoteModDetail?> GetModDetailAsync(string slug, CancellationToken ct = default)
     {
+        // 注意：**不能**带 ?type=mod。
+        // 站点的 ?type 是"slug + resourceType"联合匹配的，列表里可能混有 resourcepack /
+        // shader / plugin 等类型（例如 Nexus's Keyviewer 就是 resourcepack），硬套 mod 会 404。
+        // 不带 ?type 时，服务端会先按 _id、再按 slug 全局匹配，各种类型都能查到。
         using var doc = await SourceHttp.GetJsonCachedAsync(
             _http,
-            $"{BaseUrl}/api/mods/slug/{Uri.EscapeDataString(slug)}?type=mod",
+            $"{BaseUrl}/api/mods/slug/{Uri.EscapeDataString(slug)}",
             SourceHttp.DetailTtl,
             ct);
 
@@ -117,6 +130,9 @@ public sealed class ModriftSource : IRemoteSource
         {
             return null;
         }
+
+        // 先记住这个条目到底是什么类型（版本接口必须带对 ?type）
+        RememberKind(root);
 
         var versions = await FetchVersionsAsync(slug, ct);
         var mod = BuildMod(root, versions);
@@ -169,11 +185,13 @@ public sealed class ModriftSource : IRemoteSource
 
     private async Task<RemoteMod?> MapModAsync(JsonElement mod, CancellationToken ct)
     {
+        // 先记下类型，再取版本 —— 版本接口要靠它决定 ?type= 的值
+        RememberKind(mod);
         var versions = await FetchVersionsAsync(Json.Text(mod, "slug"), ct);
         return BuildMod(mod, versions);
     }
 
-    private static RemoteMod? BuildMod(JsonElement mod, IReadOnlyList<ModriftVersion> versions)
+    private RemoteMod? BuildMod(JsonElement mod, IReadOnlyList<ModriftVersion> versions)
     {
         var id = Json.Text(mod, "_id");
         var name = Json.Text(mod, "title");
@@ -182,6 +200,9 @@ public sealed class ModriftSource : IRemoteSource
         {
             return null;
         }
+
+        // 顺手记住类型：后面取版本 / 解析下载还要用
+        RememberKind(mod);
 
         var chosen = PickVersion(versions);
         var file = chosen is null ? null : PickFile(chosen.Files, GameVersion);
@@ -211,8 +232,28 @@ public sealed class ModriftSource : IRemoteSource
             Likes: Json.Long(mod, "favorites"),
             HomepageUrl: homepage.Length > 0 ? homepage : null,
             UpdatedAt: Json.DateTime(mod, "updatedAt"),
-            Loader: PickLoader(chosen?.Files ?? []));
+            Loader: PickLoader(chosen?.Files ?? []),
+            ResourceType: NormalizeResourceType(Json.Text(mod, "resourceType")));
     }
+
+    /// <summary>从条目的 JSON 里读出 slug + resourceType，记进 <see cref="_kindBySlug"/>。</summary>
+    private void RememberKind(JsonElement mod)
+    {
+        var slug = Json.Text(mod, "slug");
+        if (slug.Length == 0)
+        {
+            return;
+        }
+
+        _kindBySlug[slug] = NormalizeResourceType(Json.Text(mod, "resourceType"));
+    }
+
+    /// <summary>
+    /// 站点上的 resourceType（mod / resourcepack / shader / plugin / library / tool / other）。
+    /// 列表里大多数条目不带这个字段，缺省按 mod 处理。
+    /// </summary>
+    private static string NormalizeResourceType(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "mod" : value.Trim().ToLowerInvariant();
 
     /// <summary>
     /// 取版本列表；**丢掉没有文件的版本**（站点允许发空版本，选了也装不了）。
@@ -230,9 +271,13 @@ public sealed class ModriftSource : IRemoteSource
         JsonDocument doc;
         try
         {
+            // 版本接口**必须**带 ?type（不带会 500；用 _id 也不行，会 404），
+            // 所以先查这个 slug 的真实类型，查不到再按 mod 试。
+            var kind = _kindBySlug.TryGetValue(slug, out var known) ? known : "mod";
+
             doc = await SourceHttp.GetJsonCachedAsync(
                 _http,
-                $"{BaseUrl}/api/mods/{Uri.EscapeDataString(slug)}/versions?type=mod",
+                $"{BaseUrl}/api/mods/{Uri.EscapeDataString(slug)}/versions?type={Uri.EscapeDataString(kind)}",
                 SourceHttp.ListTtl,
                 ct);
         }
