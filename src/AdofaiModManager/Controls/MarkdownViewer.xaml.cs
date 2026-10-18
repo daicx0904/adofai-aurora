@@ -50,7 +50,7 @@ public partial class MarkdownViewer : UserControl
         nameof(DocumentFontSize),
         typeof(double),
         typeof(MarkdownViewer),
-        new PropertyMetadata(13.5, OnMarkdownChanged));
+        new PropertyMetadata(14.0, OnMarkdownChanged));
 
     public double DocumentFontSize
     {
@@ -89,15 +89,38 @@ public partial class MarkdownViewer : UserControl
 
     private void Render()
     {
+        // 继承外层字体：原来写死 "Segoe UI"，中文会回退到非 UI 变体的字体，比界面其它文字细一号。
+        var inheritedFont = FontFamily;
+
         var document = new FlowDocument
         {
-            FontFamily = new FontFamily("Segoe UI"),
+            FontFamily = inheritedFont,
             FontSize = DocumentFontSize,
             Foreground = TryFindBrush("TextFillColorPrimaryBrush", Brushes.Black),
             PagePadding = new Thickness(0),
             IsColumnWidthFlexible = true,
             TextAlignment = TextAlignment.Left,
+
+            // FlowDocument 默认会按"最高行"排版，中文回退字体的行高很大，
+            // 结果 14px 的文字行距被撑到接近 1.8 倍，看着又稀又散。
+            // 明确给一个行高（1.45 倍），排版就紧凑自然了。
+            LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
+            LineHeight = Math.Round(DocumentFontSize * 1.45),
         };
+
+        // 和界面其它文字一致：Display 排版模式更锐利（默认 Ideal 会显得发虚）
+        TextOptions.SetTextFormattingMode(document, TextFormattingMode.Display);
+        TextOptions.SetTextRenderingMode(document, TextRenderingMode.ClearType);
+
+        // FlowDocumentScrollViewer 背景透明时 WPF 会关掉 ClearType（文字发灰、发细）。
+        // 这里给它一个和页面一致的底色；找不到主题资源时保持透明（只影响观感，不影响功能）。
+        if (Viewer.Background is null || Viewer.Background is SolidColorBrush { Color.A: 0 })
+        {
+            if (TryFindResource("ApplicationBackgroundBrush") is Brush pageBackground)
+            {
+                Viewer.Background = pageBackground;
+            }
+        }
 
         var text = Markdown;
         if (string.IsNullOrWhiteSpace(text))

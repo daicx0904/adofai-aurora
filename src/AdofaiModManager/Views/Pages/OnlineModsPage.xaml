@@ -309,7 +309,6 @@
 
                         <TextBlock Margin="0,20,0,6" FontSize="16" FontWeight="SemiBold" Text="简介" />
                         <controls:MarkdownViewer Markdown="{Binding Description}"
-                                                 Opacity="0.9"
                                                  EmptyText="暂无介绍" />
 
                         <TextBlock Margin="0,20,0,6" FontSize="16" FontWeight="SemiBold" Text="版本与文件" />
