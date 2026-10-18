@@ -122,6 +122,11 @@ powershell -ExecutionPolicy Bypass `
 - 感谢 [modlist.org](https://modlist.org) 作者 square3ang 提供公开 API，并允许 Aurora 接入。相关项目见 [modlist-org](https://github.com/modlist-org)。
 - 感谢 [UnityModManager](https://github.com/newman55/unity-mod-manager) 及其作者 [newman55](https://github.com/newman55/) 提供加载器基础。
 
+## 贡献者
+
+- [@create-xiaoyu](https://github.com/create-xiaoyu)：安装安全、更新检查与稳定性修复（[PR #2](https://github.com/lishangi688/adofai-aurora/pull/2)）。
+- [@xbodwf](https://github.com/xbodwf)：Markdown 渲染器；多加载器可行性调研（[PR #1](https://github.com/lishangi688/adofai-aurora/pull/1)）。
+
 ## 许可证
 
 本项目以 [MIT 许可证](LICENSE) 发布。
