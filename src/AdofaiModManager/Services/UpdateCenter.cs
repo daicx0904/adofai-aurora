@@ -22,6 +22,8 @@ public sealed class UpdateCenter
 
     private DateTime _siteMapTime = DateTime.MinValue;
 
+    private DateTime _siteMapFailedTime = DateTime.MinValue;
+
     public IReadOnlyDictionary<string, UpdateCheckResult> Results => _results;
 
     /// <summary>资源站 mod 映射（键：UMM Id 或显示名）</summary>
@@ -131,6 +133,7 @@ public sealed class UpdateCenter
     {
         _siteMap.Clear();
         _siteMapTime = DateTime.MinValue;
+        _siteMapFailedTime = DateTime.MinValue;
 
         _remoteMap.Clear();
         _remoteMapTime = DateTime.MinValue;
@@ -153,6 +156,12 @@ public sealed class UpdateCenter
             return;
         }
 
+        // 刚失败过（断网 / 站点挂了）：1 分钟内不再重试，免得每次切回「已安装」页都卡一次超时
+        if (!force && DateTime.UtcNow - _siteMapFailedTime < TimeSpan.FromMinutes(1))
+        {
+            return;
+        }
+
         var client = BuildSiteClient();
         if (client is null)
         {
@@ -162,6 +171,7 @@ public sealed class UpdateCenter
         var map = await TryFetchSiteVersionsAsync(client, ct);
         if (map is null || map.Count == 0)
         {
+            _siteMapFailedTime = DateTime.UtcNow;
             return;
         }
 
@@ -323,6 +333,8 @@ public sealed class UpdateCenter
 
     private static readonly TimeSpan RemoteMapTtl = TimeSpan.FromMinutes(10);
 
+    private static readonly TimeSpan RemoteMapFailureTtl = TimeSpan.FromMinutes(1);
+
     private readonly Dictionary<string, List<(IRemoteSource Source, RemoteMod Mod)>> _remoteMap = new(StringComparer.OrdinalIgnoreCase);
 
     private DateTime _remoteMapTime = DateTime.MinValue;
@@ -334,7 +346,10 @@ public sealed class UpdateCenter
     /// </summary>
     private async Task<Dictionary<string, List<(IRemoteSource Source, RemoteMod Mod)>>> GetRemoteMapAsync(CancellationToken ct)
     {
-        if (_remoteMap.Count > 0 && DateTime.UtcNow - _remoteMapTime < RemoteMapTtl)
+        // 拉成功的结果缓存 10 分钟；全部失败（断网）也要记住 1 分钟 ——
+        // 否则"检查全部"时每个 mod 都会把所有第三方源重新请求一遍，每个源最多等 30 秒
+        var ttl = _remoteMap.Count > 0 ? RemoteMapTtl : RemoteMapFailureTtl;
+        if (DateTime.UtcNow - _remoteMapTime < ttl)
         {
             return _remoteMap;
         }
@@ -376,10 +391,10 @@ public sealed class UpdateCenter
             {
                 _remoteMap[pair.Key] = pair.Value;
             }
-
-            _remoteMapTime = DateTime.UtcNow;
         }
 
+        // 失败时保留上一次成功的映射（如果有），只是推迟下一次重试
+        _remoteMapTime = DateTime.UtcNow;
         return _remoteMap;
     }
 
@@ -551,16 +566,20 @@ public sealed class UpdateCenter
         }
     }
 
-    private static string BuildSiteMessage(string remote, string? local, bool newer, bool sameScheme)
+    private static string BuildSiteMessage(string remote, string? local, bool newer, bool schemeMismatch)
     {
-        if (!sameScheme)
+        // 注意参数含义：schemeMismatch = true 才是"写法不同"。
+        // （原来这里叫 sameScheme 却传进来 schemeMismatch，正常的 mod 全都显示成"版本号规则不同"）
+        var site = AppServices.SiteDisplayName;
+
+        if (schemeMismatch)
         {
             return newer
-                ? $"ADOFAITools 有新版 {remote}（本地 {local}，两者版本号规则不同）"
-                : $"ADOFAITools 为 {remote}，本地为 {local}（版本号规则不同，无法逐段比较）";
+                ? $"{site} 有新版 {remote}（本地 {local}，两者版本号规则不同）"
+                : $"{site} 为 {remote}，本地为 {local}（版本号规则不同，无法逐段比较）";
         }
 
-        return newer ? $"ADOFAITools 有新版 {remote}" : $"ADOFAITools 已是最新（{remote}）";
+        return newer ? $"{site} 有新版 {remote}" : $"{site} 已是最新（{remote}）";
     }
 
     /// <summary>
@@ -580,12 +599,12 @@ public sealed class UpdateCenter
             if (cmp > 0)
             {
                 // GitHub 更新更快 → 用 GitHub，并注明资源站当前版本
-                return Combine(gitHub, site, $"ADOFAITools {site.RemoteVersion}");
+                return Combine(gitHub, site, $"{AppServices.SiteDisplayName} {site.RemoteVersion}");
             }
 
             if (cmp < 0)
             {
-                return Combine(site, gitHub, $"GitHub {gitHub.RemoteVersion}");
+                return Combine(site, gitHub, $"{gitHub.SourceLabel ?? "GitHub"} {gitHub.RemoteVersion}");
             }
 
             // 版本一致：优先资源站（下载更快，也不给 GitHub 添流量）
@@ -663,11 +682,12 @@ public sealed class UpdateCenter
         try
         {
             var map = new Dictionary<string, SiteModMatch>(StringComparer.OrdinalIgnoreCase);
-            var page = 1;
+            const int pageSize = 100;
 
-            while (true)
+            // 翻页上限：站点如果忽略 page 参数（或 pageSize 返回 0），原来的条件永远不成立，会无限请求
+            for (var page = 1; page <= 50; page++)
             {
-                var result = await client.GetModsAsync(page, 100, null, null, null, "updated", null, ct);
+                var result = await client.GetModsAsync(page, pageSize, null, null, null, "updated", null, ct);
 
                 foreach (var item in result.Items)
                 {
@@ -700,12 +720,11 @@ public sealed class UpdateCenter
                     }
                 }
 
-                if (result.Items.Count == 0 || page * result.PageSize >= result.Total)
+                var effectivePageSize = result.PageSize > 0 ? result.PageSize : pageSize;
+                if (result.Items.Count == 0 || page * effectivePageSize >= result.Total)
                 {
                     break;
                 }
-
-                page++;
             }
 
             return map;

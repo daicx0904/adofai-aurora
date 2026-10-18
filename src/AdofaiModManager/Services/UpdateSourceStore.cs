@@ -69,13 +69,7 @@ public sealed class UpdateSourceStore
     {
         try
         {
-            var dir = Path.GetDirectoryName(_path);
-            if (!string.IsNullOrEmpty(dir))
-            {
-                Directory.CreateDirectory(dir);
-            }
-
-            File.WriteAllText(_path, JsonSerializer.Serialize(_overrides, new JsonSerializerOptions { WriteIndented = true }));
+            AppPaths.WriteAllTextAtomic(_path, JsonSerializer.Serialize(_overrides, new JsonSerializerOptions { WriteIndented = true }));
         }
         catch
         {

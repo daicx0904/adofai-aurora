@@ -206,9 +206,16 @@ public sealed class GitHubUpdateService
             return new UpdateCheckResult { Success = false, Message = "Repository.json 里没有版本信息。" };
         }
 
+        // 一个 Repository.json 里可能列着同一作者的好几个 mod：
+        // 只有"整个文件就一条"时才允许按位置兜底，否则拿别的 mod 的版本号会误报更新
         var release = repository.Releases.FirstOrDefault(r =>
                           string.Equals(r.Id, modId, StringComparison.OrdinalIgnoreCase))
-                      ?? repository.Releases[0];
+                      ?? (repository.Releases.Count == 1 ? repository.Releases[0] : null);
+
+        if (release is null)
+        {
+            return new UpdateCheckResult { Success = false, Message = $"Repository.json 里没有 {modId} 这个 mod。" };
+        }
 
         if (string.IsNullOrWhiteSpace(release.DownloadUrl))
         {
@@ -313,8 +320,13 @@ public sealed class GitHubUpdateService
             return false;
         }
 
-        return local is null || KernelService.CompareVersions(remote, local) > 0;
+        // 与资源站 / 第三方源同一套比较规则（「年份+周+字母」写法也能比，写法不同只比第一段）
+        return string.IsNullOrWhiteSpace(local) || VersionScheme.Compare(remote, local) > 0;
     }
+
+    /// <summary>仓库名去掉结尾的 .git（只去结尾，名字中间带 .git 的仓库不能误伤）。</summary>
+    private static string TrimGitSuffix(string repo) =>
+        repo.EndsWith(".git", StringComparison.OrdinalIgnoreCase) ? repo[..^4] : repo;
 
     private static async Task<string> GetStringAsync(string url, CancellationToken ct, bool gitHubApi = false)
     {
@@ -381,7 +393,7 @@ public sealed class GitHubUpdateService
             return null;
         }
 
-        return (parts[0], parts[1].Replace(".git", string.Empty, StringComparison.OrdinalIgnoreCase));
+        return (parts[0], TrimGitSuffix(parts[1]));
     }
 
     /// <summary>
@@ -411,7 +423,7 @@ public sealed class GitHubUpdateService
         }
 
         owner = parts[0];
-        repo = parts[1].Replace(".git", string.Empty, StringComparison.OrdinalIgnoreCase);
+        repo = TrimGitSuffix(parts[1]);
         return true;
     }
 

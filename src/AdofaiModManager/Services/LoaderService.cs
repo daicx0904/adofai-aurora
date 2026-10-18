@@ -113,6 +113,12 @@ public sealed class LoaderService
             return new InstallResult(false, $"内核目录不存在：{kernelDirectory}");
         }
 
+        // 游戏运行时 winhttp.dll / UnityModManager.dll 都被占用，复制到一半失败会留下新旧混杂的加载器
+        if (SteamGameLocator.IsGameRunning())
+        {
+            return new InstallResult(false, SteamGameLocator.GameRunningMessage);
+        }
+
         try
         {
             Directory.CreateDirectory(LoaderPath);
@@ -180,6 +186,11 @@ public sealed class LoaderService
     /// <summary>卸载加载器。</summary>
     public InstallResult Uninstall()
     {
+        if (SteamGameLocator.IsGameRunning())
+        {
+            return new InstallResult(false, SteamGameLocator.GameRunningMessage);
+        }
+
         try
         {
             var removed = new List<string>();

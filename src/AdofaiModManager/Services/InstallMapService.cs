@@ -61,13 +61,7 @@ public sealed class InstallMapService
     {
         try
         {
-            var dir = Path.GetDirectoryName(_path);
-            if (!string.IsNullOrEmpty(dir))
-            {
-                Directory.CreateDirectory(dir);
-            }
-
-            File.WriteAllText(_path, JsonSerializer.Serialize(_map, new JsonSerializerOptions { WriteIndented = true }));
+            AppPaths.WriteAllTextAtomic(_path, JsonSerializer.Serialize(_map, new JsonSerializerOptions { WriteIndented = true }));
         }
         catch
         {

@@ -46,7 +46,9 @@ public static class AppSelfUpdater
                 return new SelfUpdateResult(false, "没有找到适合当前版本（安装版 / 绿色版）的下载文件，请手动下载。");
             }
 
-            var workRoot = Path.Combine(Path.GetTempPath(), $"aurora-update-{info.Version}");
+            // 版本号来自远端（tag / 资源站），拼进路径前先清洗：
+            // 这个目录随后会被整个删除重建，不能让 "../" 之类的值把它带到别处
+            var workRoot = Path.Combine(Path.GetTempPath(), $"aurora-update-{SanitizeFileName(info.Version).Replace("..", "_")}");
             var packageDir = Path.Combine(workRoot, "package");
             var payloadDir = Path.Combine(workRoot, "payload");
 
@@ -337,6 +339,10 @@ public static class AppSelfUpdater
             // （例如从旧名 AdofaiModManager.exe 换成 Aurora.exe），所以分开判断。
             var currentExe = Path.GetFileName(Environment.ProcessPath ?? "Aurora.exe");
             var newExe = PickNewExeName(payloadDir, currentExe);
+
+            // 按进程号等待，而不是按 exe 名字：
+            // 用户同时开着另一份 Aurora（例如别的目录里的绿色版）时，按名字会一直等下去，更新永远不执行
+            var pid = Environment.ProcessId;
             var newExePath = Path.Combine(target, newExe);
 
             Directory.CreateDirectory(AppPaths.LogDirectory);
@@ -352,7 +358,7 @@ public static class AppSelfUpdater
                 echo [%date% %time%] waiting for the app to exit... >> "%LOG%"
 
                 :wait
-                tasklist /fi "imagename eq {currentExe}" 2>nul | find /i "{currentExe}" >nul
+                tasklist /fi "pid eq {pid}" /nh 2>nul | find "{pid}" >nul
                 if not errorlevel 1 (
                     ping -n 2 127.0.0.1 >nul
                     goto wait

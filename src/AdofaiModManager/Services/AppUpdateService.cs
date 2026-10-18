@@ -135,7 +135,11 @@ public static class AppUpdateService
     /// 当前是「安装版」还是「绿色版」。
     /// 影响更新引导：安装版建议下载安装包；绿色版直接下载 zip 覆盖即可。
     /// </summary>
-    public static AppDistribution Distribution => DetectDistribution();
+    public static AppDistribution Distribution => LazyDistribution.Value;
+
+    // 判断要把注册表里所有卸载项扫一遍；进程运行期间不会变，算一次就够
+    //（启动会话头、每条崩溃日志、更新提示都要用它）
+    private static readonly Lazy<AppDistribution> LazyDistribution = new(DetectDistribution);
 
     /// <summary>开发用：本地更新包路径（环境变量 AMM_UPDATE_TEST_PACKAGE）</summary>
     private static string? TestPackagePath
@@ -476,9 +480,11 @@ public static class AppUpdateService
         }
 
         var text = $"{version.Major}.{version.Minor}";
-        if (version.Build > 0)
+
+        // 有第四段时第三段必须保留：1.0.0.5 原来会被格式化成 "1.0.5"
+        if (version.Build > 0 || version.Revision > 0)
         {
-            text += $".{version.Build}";
+            text += $".{Math.Max(0, version.Build)}";
         }
 
         if (version.Revision > 0)

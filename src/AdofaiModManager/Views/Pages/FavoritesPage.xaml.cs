@@ -168,7 +168,7 @@ public partial class FavoritesPage : Page
             var result = await installer.InstallAsync(detail);
             Report(result.Success, result.Message);
         }
-        catch (AdofaiToolsException ex)
+        catch (Exception ex)
         {
             Report(false, ex.Message);
         }
