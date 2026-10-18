@@ -24,6 +24,11 @@ public partial class InstalledModsPage : Page
         ModsList.ItemsSource = _mods;
         Loaded += async (_, _) =>
         {
+            // 更新检查（含启动时的后台检查）完成后，列表同步刷新。
+            // 在 Loaded 里订阅（而不是构造函数）：页面被导航缓存后再次显示时也要重新挂上
+            AppServices.Updates.Changed -= OnUpdatesChanged;
+            AppServices.Updates.Changed += OnUpdatesChanged;
+
             PageScrollFix.DisableOuterPageScrolling(this);
             Reload();
 
@@ -32,8 +37,6 @@ public partial class InstalledModsPage : Page
             await AppServices.Updates.EnsureSiteMapAsync();
         };
 
-        // 更新检查（含启动时的后台检查）完成后，列表同步刷新
-        AppServices.Updates.Changed += OnUpdatesChanged;
         Unloaded += (_, _) => AppServices.Updates.Changed -= OnUpdatesChanged;
     }
 
@@ -97,7 +100,7 @@ public partial class InstalledModsPage : Page
         {
             try
             {
-                ReloadOne(mod, updateService, ref hasCompatibilityInfo);
+                ReloadOne(mod, updateService, gameVersion, ref hasCompatibilityInfo);
             }
             catch (Exception ex)
             {
@@ -188,7 +191,11 @@ public partial class InstalledModsPage : Page
     /// 处理单个已安装 mod 的显示字段（更新源 / 更新状态 / 图标 / 兼容性提示）。
     /// 单独抽出来是为了让调用方能逐个 try/catch —— 任何一个 mod 出问题都不该影响其它卡片。
     /// </summary>
-    private void ReloadOne(InstalledMod mod, GitHubUpdateService updateService, ref bool hasCompatibilityInfo)
+    private void ReloadOne(
+        InstalledMod mod,
+        GitHubUpdateService updateService,
+        string? gameVersion,
+        ref bool hasCompatibilityInfo)
     {
         var source = updateService.ResolveSource(mod);
         var site = AppServices.Updates.FindSiteMod(mod);
@@ -199,7 +206,7 @@ public partial class InstalledModsPage : Page
         }
         else if (site is not null)
         {
-            mod.UpdateSourceLabel = "更新源：ADOFAITools";
+            mod.UpdateSourceLabel = $"更新源：{AppServices.SiteDisplayName}";
         }
         else
         {
@@ -222,7 +229,7 @@ public partial class InstalledModsPage : Page
                     : string.IsNullOrWhiteSpace(result.RemoteVersion)
                         ? "无可用更新源"
                         : result.VersionSchemeMismatch
-                            ? $"版本号规则不同（ADOFAITools {result.RemoteVersion} / 本地 {mod.Version}）"
+                            ? $"版本号规则不同（{result.SourceLabel ?? AppServices.SiteDisplayName} {result.RemoteVersion} / 本地 {mod.Version}）"
                             : $"已是最新{via}"
                 : $"检查失败{via}";
 
@@ -237,8 +244,6 @@ public partial class InstalledModsPage : Page
             mod.UpdateDownloadUrl = result.DownloadUrl;
             mod.UpdateFileName = result.FileName;
         }
-
-        var gameVersion = AppServices.GameVersion;
 
         if (!string.IsNullOrWhiteSpace(mod.GameVersion) &&
             !string.IsNullOrWhiteSpace(gameVersion) &&
@@ -365,15 +370,27 @@ public partial class InstalledModsPage : Page
 
     private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.DataContext is not InstalledMod mod)
+        if (_busy || (sender as FrameworkElement)?.DataContext is not InstalledMod mod)
         {
             return;
         }
 
-        // 单条检查也走"资源站 + GitHub 双来源"，与整体检查保持一致
-        var result = await AppServices.Updates.CheckOneAsync(mod, forceRefresh: true);
-        Report(result.Success, result.Message);
-        Reload();
+        _busy = true;
+        try
+        {
+            // 单条检查也走"资源站 + GitHub 双来源"，与整体检查保持一致
+            var result = await AppServices.Updates.CheckOneAsync(mod, forceRefresh: true);
+            Report(result.Success, result.Message);
+        }
+        catch (Exception ex)
+        {
+            Report(false, $"检查更新失败：{ex.Message}");
+        }
+        finally
+        {
+            _busy = false;
+            Reload();
+        }
     }
 
     private async void CheckAll_Click(object sender, RoutedEventArgs e)
@@ -409,6 +426,10 @@ public partial class InstalledModsPage : Page
 
             var updatable = mods.Count(m => AppServices.Updates.Get(m) is { Success: true, UpdateAvailable: true });
             Report(true, $"检查完成：{mods.Count} 个 mod，{updatable} 个可更新。");
+        }
+        catch (Exception ex)
+        {
+            Report(false, $"检查更新失败：{ex.Message}");
         }
         finally
         {
@@ -471,7 +492,8 @@ public partial class InstalledModsPage : Page
 
     private async void Update_Click(object sender, RoutedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.DataContext is not InstalledMod mod)
+        // 正在更新 / 检查时不接受新的点击：连点两下会让两个安装同时改同一个文件夹
+        if (_busy || (sender as FrameworkElement)?.DataContext is not InstalledMod mod)
         {
             return;
         }
@@ -570,6 +592,11 @@ public partial class InstalledModsPage : Page
         catch (AdofaiToolsException ex)
         {
             Report(false, ex.Message);
+        }
+        catch (Exception ex)
+        {
+            AppPaths.AppendDebugLog($"[update] {mod.Id} 更新失败：{ex}");
+            Report(false, $"更新失败：{ex.Message}");
         }
         finally
         {

@@ -38,9 +38,22 @@ public sealed class SettingsService
                 Settings = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
             }
         }
-        catch
+        catch (Exception ex)
         {
             Settings = new AppSettings();
+
+            // 读不出来的配置先留一份备份再说：下一次 Save 会用默认值覆盖它，
+            // 不备份的话用户填过的 API key、游戏目录就彻底找不回来了
+            try
+            {
+                File.Copy(ConfigFilePath, ConfigFilePath + ".broken", true);
+            }
+            catch
+            {
+                // 忽略
+            }
+
+            AppPaths.AppendDebugLog($"[settings] 配置文件损坏，已备份为 settings.json.broken 并使用默认配置：{ex.Message}");
         }
 
         // 诊断日志开关跟设置走（默认开）
@@ -51,8 +64,7 @@ public sealed class SettingsService
     {
         try
         {
-            Directory.CreateDirectory(ConfigDirectory);
-            File.WriteAllText(ConfigFilePath, JsonSerializer.Serialize(Settings, JsonWriteOptions));
+            AppPaths.WriteAllTextAtomic(ConfigFilePath, JsonSerializer.Serialize(Settings, JsonWriteOptions));
         }
         catch
         {

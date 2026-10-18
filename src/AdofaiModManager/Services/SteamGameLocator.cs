@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Text.RegularExpressions;
 using Microsoft.Win32;
@@ -12,6 +13,28 @@ public sealed class SteamGameLocator
     public const int AppId = 977950;
     public const string GameFolderName = "A Dance of Fire and Ice";
     public const string GameExeName = "A Dance of Fire and Ice.exe";
+
+    public const string GameRunningMessage =
+        "游戏正在运行，请先关闭《冰与火之舞》再操作（运行中文件被占用，改动也可能在游戏退出时被覆盖）。";
+
+    /// <summary>游戏进程是否在运行（装/卸 mod、部署加载器之前检查，避免改到一半被文件占用卡住）。</summary>
+    public static bool IsGameRunning()
+    {
+        try
+        {
+            var processes = Process.GetProcessesByName(Path.GetFileNameWithoutExtension(GameExeName));
+            foreach (var process in processes)
+            {
+                process.Dispose();
+            }
+
+            return processes.Length > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     /// <summary>返回所有可能的游戏目录（去重）。</summary>
     public IReadOnlyList<string> FindCandidates()

@@ -22,6 +22,10 @@ public static class ImageLoader
 
     private static readonly ConcurrentDictionary<string, ImageSource?> Memory = new();
 
+    private static readonly ConcurrentDictionary<string, DateTime> Failures = new();
+
+    private static readonly TimeSpan FailureRetryDelay = TimeSpan.FromMinutes(3);
+
     public static async Task<ImageSource?> LoadAsync(string? url, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(url) ||
@@ -34,6 +38,12 @@ public static class ImageLoader
         if (Memory.TryGetValue(url, out var cached))
         {
             return cached;
+        }
+
+        // 最近失败过的地址先歇一会儿（坏链接不必每次刷新列表都重新等 30 秒超时）
+        if (Failures.TryGetValue(url, out var failedAt) && DateTime.UtcNow - failedAt < FailureRetryDelay)
+        {
+            return null;
         }
 
         var file = Path.Combine(AppPaths.IconCacheDirectory, ApiCache.Hash(url) + ".img");
@@ -74,15 +84,16 @@ public static class ImageLoader
         if (File.Exists(file))
         {
             var bytes = await TryReadAsync(file, ct);
-            if (bytes is not null)
+            if (bytes is not null && Decode(bytes) is { } stale)
             {
-                var stale = Decode(bytes);
                 Memory[url] = stale;
                 return stale;
             }
         }
 
-        Memory[url] = null;
+        // 失败只记"什么时候失败的"，过几分钟还会重试：
+        // 原来直接把 null 写进内存缓存，网络临时抖一下，图标就一直空着直到重启
+        Failures[url] = DateTime.UtcNow;
         return null;
     }
 

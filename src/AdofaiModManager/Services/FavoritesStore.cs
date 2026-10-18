@@ -63,13 +63,7 @@ public sealed class FavoritesStore
     {
         try
         {
-            var dir = Path.GetDirectoryName(_path);
-            if (!string.IsNullOrEmpty(dir))
-            {
-                Directory.CreateDirectory(dir);
-            }
-
-            File.WriteAllText(_path, JsonSerializer.Serialize(_items, JsonOptions));
+            AppPaths.WriteAllTextAtomic(_path, JsonSerializer.Serialize(_items, JsonOptions));
         }
         catch
         {

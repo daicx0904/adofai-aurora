@@ -38,6 +38,39 @@ public sealed class UmmParamsService(string paramsFilePath)
         }
     }
 
+    /// <summary>一次读出所有 mod 的启用状态（扫描列表时用，避免每个 mod 都解析一遍文件）。</summary>
+    public Dictionary<string, bool> ReadAll()
+    {
+        var result = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            if (!File.Exists(ParamsFilePath))
+            {
+                return result;
+            }
+
+            var mods = XDocument.Load(ParamsFilePath).Root?.Element("ModParams")?.Elements("Mod");
+            foreach (var mod in mods ?? [])
+            {
+                var id = (string?)mod.Attribute("Id");
+                if (string.IsNullOrWhiteSpace(id) || result.ContainsKey(id))
+                {
+                    continue; // 和 FindMod 一致：同名的以第一条为准
+                }
+
+                var value = (string?)mod.Attribute("Enabled");
+                result[id] = value is null || value.Equals("true", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+        catch
+        {
+            // 读不了就当全部启用（与 IsEnabled 的默认值一致）
+        }
+
+        return result;
+    }
+
     public void SetEnabled(string modId, bool enabled)
     {
         var doc = LoadOrCreate();

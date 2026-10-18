@@ -174,6 +174,24 @@ public static class AppPaths
         return result;
     }
 
+    /// <summary>
+    /// 原子地写一个文本文件：先写同目录下的临时文件，再整体替换。
+    /// 直接 WriteAllText 时如果中途断电 / 被杀进程，会留下半截 JSON，
+    /// 下次启动读不出来就整份配置作废（连"首次向导已完成"都丢了）。
+    /// </summary>
+    public static void WriteAllTextAtomic(string path, string contents)
+    {
+        var dir = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(dir))
+        {
+            Directory.CreateDirectory(dir);
+        }
+
+        var temp = path + ".tmp";
+        File.WriteAllText(temp, contents);
+        File.Move(temp, path, true);
+    }
+
     /// <summary>文件超过上限就轮转（保留一份上一版；没有上一版可留时直接清空）。</summary>
     private static void RotateIfNeeded(string path, long limit, string? previousPath = null)
     {

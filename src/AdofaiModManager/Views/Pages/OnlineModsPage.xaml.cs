@@ -222,6 +222,7 @@ public partial class OnlineModsPage : Page
     {
         _installedIds.Clear();
         _installedVersions.Clear();
+        _installedByNormalized.Clear();   // 不清的话卸载过的 mod 还会被标成"已安装"
 
         var service = BuildModService();
         if (service is null)
@@ -391,11 +392,13 @@ public partial class OnlineModsPage : Page
         }
 
         // 可更新的置顶（保持接口原始顺序，每页内部这样排）
+        var added = new List<ModListItem>();
         foreach (var item in result.Items.OrderByDescending(i => i.LocalState == "可更新" ? 1 : 0))
         {
             if (known.Add(item.Id))
             {
                 _mods.Add(item);
+                added.Add(item);
             }
         }
 
@@ -407,7 +410,9 @@ public partial class OnlineModsPage : Page
         }
 
         UpdateFooter();
-        _ = LoadIconsAsync(_mods.ToList());
+
+        // 只给这一页新加的条目拉图标（原来每补一页都把整个列表重新跑一遍，后台补 60 页就是平方级）
+        _ = LoadIconsAsync(added);
 
         if (!append && _mods.Count > 0)
         {
@@ -792,6 +797,7 @@ public partial class OnlineModsPage : Page
         _total = result.Total;
 
         var known = new HashSet<string>(_mods.Select(m => m.Id), StringComparer.OrdinalIgnoreCase);
+        var added = new List<ModListItem>();
 
         foreach (var remote in result.Items)
         {
@@ -801,13 +807,14 @@ public partial class OnlineModsPage : Page
             if (known.Add(item.Id))
             {
                 _mods.Add(item);
+                added.Add(item);
             }
         }
 
         _allLoaded = result.Items.Count == 0 || (_total > 0 && _mods.Count >= _total);
 
         UpdateFooter();
-        _ = LoadIconsAsync(_mods.ToList());
+        _ = LoadIconsAsync(added);
 
         if (!append && _mods.Count > 0)
         {
@@ -1073,18 +1080,11 @@ public partial class OnlineModsPage : Page
         _remoteDetail = detail;
         _detail = RemoteCatalog.ToDetail(detail);
 
+        var rendered = _detail;
         DetailPanel.DataContext = _detail;
         DetailEmpty.Visibility = Visibility.Collapsed;
         DetailScroll.Visibility = Visibility.Visible;
-
-        try
-        {
-            DetailIcon.Source = item.IconSource ?? await ImageLoader.LoadAsync(detail.Mod.IconUrl);
-        }
-        catch
-        {
-            // 图标加载失败不影响详情
-        }
+        DetailIcon.Source = item.IconSource;
 
         // 回链：第三方源优先用它自己的详情页（modlist 的作者希望这样署名），否则用 mod 的主页
         SetModPageLink(source.ModPageUrl(item.Slug) ?? detail.Mod.HomepageUrl);
@@ -1118,6 +1118,32 @@ public partial class OnlineModsPage : Page
         // 收藏对所有来源都生效
         FavoriteButton.IsEnabled = true;
         FavoriteButton.Content = "收藏";
+
+        // 图标放在最后异步补：原来先 await 图标再填版本列表，
+        // 等图标的这段时间用户切到别的 mod，旧 mod 的版本列表会盖到新 mod 上（安装时就装错了文件）
+        await LoadDetailIconAsync(item, detail.Mod.IconUrl, rendered);
+    }
+
+    /// <summary>详情图标：列表里已有就直接用，否则下载；期间换了详情就丢弃结果。</summary>
+    private async Task LoadDetailIconAsync(ModListItem item, string? iconUrl, ModDetail rendered)
+    {
+        if (item.IconSource is not null)
+        {
+            return;
+        }
+
+        try
+        {
+            var icon = await ImageLoader.LoadAsync(iconUrl);
+            if (ReferenceEquals(_detail, rendered))
+            {
+                DetailIcon.Source = icon;
+            }
+        }
+        catch
+        {
+            // 图标加载失败不影响详情
+        }
     }
 
     /// <summary>把 modrift 的 resourceType 翻成用户看得懂的字（其它来源只有 mod，用不到）。</summary>
@@ -1291,15 +1317,7 @@ public partial class OnlineModsPage : Page
         DetailPanel.DataContext = detail;
         DetailEmpty.Visibility = Visibility.Collapsed;
         DetailScroll.Visibility = Visibility.Visible;
-
-        try
-        {
-            DetailIcon.Source = item.IconSource ?? await ImageLoader.LoadAsync(detail.IconUrl);
-        }
-        catch
-        {
-            // 图标加载失败不影响详情本身
-        }
+        DetailIcon.Source = item.IconSource;
 
         SetModPageLink(detail.HomepageUrl ?? detail.SourceUrl);
 
@@ -1315,6 +1333,9 @@ public partial class OnlineModsPage : Page
         };
 
         UpdateFavoriteButton(detail.Id);
+
+        // 图标最后补（见 RenderRemoteDetail 的说明）
+        await LoadDetailIconAsync(item, detail.IconUrl, detail);
     }
 
     private async void Install_Click(object sender, RoutedEventArgs e)
@@ -1385,6 +1406,13 @@ public partial class OnlineModsPage : Page
         catch (AdofaiToolsException ex)
         {
             Report(false, ex.Message);
+            InstallStatusText.Text = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            // 下载意图之外的意外（磁盘 / 网络读流中断等）：别让 async void 把程序带崩
+            AppPaths.AppendDebugLog($"[install] 安装失败：{ex}");
+            Report(false, $"安装失败：{ex.Message}");
             InstallStatusText.Text = ex.Message;
         }
         finally

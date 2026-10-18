@@ -186,7 +186,10 @@ public sealed class KernelService
 
             if (File.Exists(_loader.WinhttpPath))
             {
-                File.Copy(_loader.WinhttpPath, Path.Combine(targetDir, "winhttp_x64.dll"), true);
+                // 部署时按游戏位数挑 winhttp_x64 / winhttp_x86，备份也得按位数命名，
+                // 否则 32 位游戏回滚到这份备份会报"内核缺少注入组件"
+                var winhttpName = _loader.Detect().Is64BitGame ? "winhttp_x64.dll" : "winhttp_x86.dll";
+                File.Copy(_loader.WinhttpPath, Path.Combine(targetDir, winhttpName), true);
             }
 
             File.WriteAllText(

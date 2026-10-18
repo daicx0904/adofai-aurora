@@ -43,6 +43,12 @@ public sealed class ModService
         Directory.Exists(LoaderPath) &&
         File.Exists(Path.Combine(LoaderPath, "UnityModManager.dll"));
 
+    /// <summary>
+    /// 安装过程中在 Mods 下用到的临时文件夹前缀（解压暂存 / 旧版本备份）。
+    /// 以点开头、名字固定，扫描时会跳过，残留的也会被顺手清理掉。
+    /// </summary>
+    private const string TempFolderPrefix = ".aurora-";
+
     public IReadOnlyList<InstalledMod> Scan()
     {
         var result = new List<InstalledMod>();
@@ -52,14 +58,19 @@ public sealed class ModService
             return result;
         }
 
+        CleanupTempFolders();
+
+        // Params.xml 只读一次（原来每个 mod 都重新解析一遍整个文件）
+        var enabledStates = Params.ReadAll();
+
         foreach (var dir in Directory.GetDirectories(ModsPath))
         {
-            var infoPath = Path.Combine(dir, "Info.json");
-            if (!File.Exists(infoPath))
+            if (IsTempFolder(dir))
             {
-                infoPath = Path.Combine(dir, "info.json");
+                continue;
             }
 
+            var infoPath = Path.Combine(dir, "Info.json");
             if (!File.Exists(infoPath))
             {
                 continue;
@@ -86,7 +97,7 @@ public sealed class ModService
                     Repository = info.Repository,
                     FolderPath = dir,
                     FolderName = Path.GetFileName(dir),
-                    IsEnabled = Params.IsEnabled(info.Id),
+                    IsEnabled = !enabledStates.TryGetValue(info.Id, out var enabled) || enabled,
                 });
             }
             catch
@@ -101,6 +112,14 @@ public sealed class ModService
         return result;
     }
 
+    /// <summary>
+    /// 安装一个 mod 压缩包。
+    ///
+    /// 流程刻意做成"先准备好新版本，再替换旧版本"：
+    ///  ① 整包解压到 Mods 下的临时文件夹（包坏了 / 磁盘满了，旧版本毫发无损）；
+    ///  ② 把旧版本文件夹整个改名挪开（文件被占用时这一步就会失败 → 原样还原，不会删出半个 mod）；
+    ///  ③ 新版本改名成正式文件夹，最后才删掉旧版本。
+    /// </summary>
     public InstallResult InstallFromZip(string zipPath)
     {
         if (!File.Exists(zipPath))
@@ -108,101 +127,102 @@ public sealed class ModService
             return new InstallResult(false, "文件不存在。");
         }
 
+        if (SteamGameLocator.IsGameRunning())
+        {
+            return new InstallResult(false, SteamGameLocator.GameRunningMessage);
+        }
+
+        string? staging = null;
+
         try
         {
-            using var archive = ZipFile.OpenRead(zipPath);
-
-            var infoEntry = archive.Entries.FirstOrDefault(e =>
-                Path.GetFileName(e.FullName).Equals("Info.json", StringComparison.OrdinalIgnoreCase));
-
-            if (infoEntry is null)
-            {
-                return new InstallResult(false, "这不是 UMM 格式的 mod（压缩包里没有 Info.json，可能是 MelonLoader 等其它加载器的版本）。");
-            }
-
             ModInfoJson? info;
-            using (var stream = infoEntry.Open())
+
+            using (var archive = ZipFile.OpenRead(zipPath))
             {
-                info = JsonSerializer.Deserialize<ModInfoJson>(stream, JsonOptions);
+                // 包里可能不止一个 Info.json（例如附带的示例 / 依赖），取层级最浅的那个
+                var infoEntry = archive.Entries
+                    .Where(e => NameOf(e).Equals("Info.json", StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(e => Normalize(e.FullName).Count(c => c == '/'))
+                    .FirstOrDefault();
+
+                if (infoEntry is null)
+                {
+                    return new InstallResult(false, "这不是 UMM 格式的 mod（压缩包里没有 Info.json，可能是 MelonLoader 等其它加载器的版本）。");
+                }
+
+                using (var stream = infoEntry.Open())
+                {
+                    info = JsonSerializer.Deserialize<ModInfoJson>(stream, JsonOptions);
+                }
+
+                if (info is null || string.IsNullOrWhiteSpace(info.Id))
+                {
+                    return new InstallResult(false, "Info.json 无效或缺少 Id 字段。");
+                }
+
+                // Id 会被直接当成文件夹名：像 ".." 或 "C:\xxx" 这样的值会让安装（以及安装前的删除）
+                // 跑到 Mods 外面去，必须拦下
+                if (!IsSafeFolderName(info.Id))
+                {
+                    return new InstallResult(false, $"Info.json 里的 Id「{info.Id}」不能用作文件夹名，已拒绝安装。");
+                }
+
+                var infoPath = Normalize(infoEntry.FullName);
+                var prefix = infoPath[..^"Info.json".Length];
+
+                // ① 先完整解压到临时文件夹
+                Directory.CreateDirectory(ModsPath);
+                staging = Path.Combine(ModsPath, $"{TempFolderPrefix}new-{Guid.NewGuid():N}");
+                Directory.CreateDirectory(staging);
+                ExtractModFiles(archive, prefix, staging);
             }
 
-            if (info is null || string.IsNullOrWhiteSpace(info.Id))
-            {
-                return new InstallResult(false, "Info.json 无效或缺少 Id 字段。");
-            }
-
-            var prefix = infoEntry.FullName[..^"Info.json".Length];
             var targetDir = Path.Combine(ModsPath, info.Id);
-            var targetRoot = Path.GetFullPath(targetDir) + Path.DirectorySeparatorChar;
 
-            // 关键：先删掉**所有** Id 相同的旧文件夹。
+            // 关键：**所有** Id 相同的旧文件夹都要替换掉。
             // 历史上用 UMM（或手动解压）装过的 mod，文件夹名可能不等于 Info.json 里的 Id
-            //（例如文件夹叫 out、Creplay v2.15），如果只删同名文件夹，
+            //（例如文件夹叫 out、Creplay v2.15），如果只处理同名文件夹，
             // 更新后就会留下两份"名字一样、版本不同"的副本。
             var oldFolders = FindFoldersWithModId(info.Id);
+            if (Directory.Exists(targetDir) &&
+                !oldFolders.Any(f => string.Equals(f, targetDir, StringComparison.OrdinalIgnoreCase)))
+            {
+                oldFolders.Add(targetDir);
+            }
 
             // 顺手把旧版本的设置（Settings.xml）留下来，更新后写回去，避免每次更新丢设置
             var previousSettings = TryReadPreviousSettings(oldFolders);
 
+            // ② 旧版本整个挪开（失败就还原，保证不会出现"删了一半"）
+            var moved = new List<(string Original, string Backup)>();
             foreach (var folder in oldFolders)
             {
+                var backup = Path.Combine(ModsPath, $"{TempFolderPrefix}old-{Guid.NewGuid():N}");
                 try
                 {
-                    Directory.Delete(folder, true);
+                    Directory.Move(folder, backup);
+                    moved.Add((folder, backup));
                 }
-                catch
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
-                    // 删不掉就继续，下面的解压会覆盖同名文件夹
+                    Restore(moved);
+                    return new InstallResult(
+                        false,
+                        $"旧版本的文件被占用，无法替换（{Path.GetFileName(folder)}）。请关闭游戏和打开着该文件夹的程序后重试。");
                 }
             }
 
-            if (Directory.Exists(targetDir))
+            // ③ 新版本就位
+            try
             {
-                Directory.Delete(targetDir, true);
+                Directory.Move(staging, targetDir);
+                staging = null;
             }
-
-            Directory.CreateDirectory(targetDir);
-
-            foreach (var entry in archive.Entries)
+            catch
             {
-                if (string.IsNullOrEmpty(entry.Name))
-                {
-                    continue; // 目录条目
-                }
-
-                var relative = entry.FullName.Replace('\\', '/');
-
-                if (prefix.Length > 0)
-                {
-                    if (!relative.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                    {
-                        continue; // mod 目录之外的文件，跳过
-                    }
-
-                    relative = relative[prefix.Length..];
-                }
-
-                if (string.IsNullOrEmpty(relative))
-                {
-                    continue;
-                }
-
-                var destination = Path.Combine(targetDir, relative.Replace('/', Path.DirectorySeparatorChar));
-                var fullDestination = Path.GetFullPath(destination);
-
-                // 防 Zip Slip
-                if (!fullDestination.StartsWith(targetRoot, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                var parent = Path.GetDirectoryName(fullDestination);
-                if (!string.IsNullOrEmpty(parent))
-                {
-                    Directory.CreateDirectory(parent);
-                }
-
-                entry.ExtractToFile(fullDestination, true);
+                Restore(moved);
+                throw;
             }
 
             // 新包里没带 Settings.xml 就沿用旧版本的，避免更新后 mod 设置被重置
@@ -218,15 +238,155 @@ public sealed class ModService
                 }
             }
 
+            foreach (var (_, backup) in moved)
+            {
+                TryDeleteDirectory(backup);
+            }
+
             var restored = oldFolders.Count > 1 ? $"（已合并 {oldFolders.Count - 1} 个重复文件夹）" : string.Empty;
             return new InstallResult(
                 true,
                 $"已安装 {info.DisplayName ?? info.Id} {info.Version}。{restored}",
                 info.Id);
         }
+        catch (InvalidDataException)
+        {
+            return new InstallResult(false, "安装失败：压缩包已损坏或不是 zip 格式。");
+        }
         catch (Exception ex)
         {
             return new InstallResult(false, $"安装失败：{ex.Message}");
+        }
+        finally
+        {
+            if (staging is not null)
+            {
+                TryDeleteDirectory(staging);
+            }
+        }
+    }
+
+    /// <summary>把 mod 目录（prefix 之下）的文件解压到 targetDir，带 Zip Slip 防护。</summary>
+    private static void ExtractModFiles(ZipArchive archive, string prefix, string targetDir)
+    {
+        var targetRoot = Path.GetFullPath(targetDir) + Path.DirectorySeparatorChar;
+
+        foreach (var entry in archive.Entries)
+        {
+            if (string.IsNullOrEmpty(entry.Name))
+            {
+                continue; // 目录条目
+            }
+
+            var relative = Normalize(entry.FullName);
+
+            if (prefix.Length > 0)
+            {
+                if (!relative.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue; // mod 目录之外的文件，跳过
+                }
+
+                relative = relative[prefix.Length..];
+            }
+
+            if (string.IsNullOrEmpty(relative))
+            {
+                continue;
+            }
+
+            var fullDestination = Path.GetFullPath(
+                Path.Combine(targetDir, relative.Replace('/', Path.DirectorySeparatorChar)));
+
+            // 防 Zip Slip
+            if (!fullDestination.StartsWith(targetRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var parent = Path.GetDirectoryName(fullDestination);
+            if (!string.IsNullOrEmpty(parent))
+            {
+                Directory.CreateDirectory(parent);
+            }
+
+            entry.ExtractToFile(fullDestination, true);
+        }
+    }
+
+    /// <summary>zip 里的路径分隔符可能是反斜杠（PowerShell 5.1 打的包），统一成 "/"。</summary>
+    private static string Normalize(string fullName) => fullName.Replace('\\', '/');
+
+    private static string NameOf(ZipArchiveEntry entry)
+    {
+        var path = Normalize(entry.FullName);
+        var slash = path.LastIndexOf('/');
+        return slash < 0 ? path : path[(slash + 1)..];
+    }
+
+    /// <summary>能不能直接当作 Mods 下的一个文件夹名（不含路径、不是 . / ..、没有非法字符）。</summary>
+    public static bool IsSafeFolderName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 128)
+        {
+            return false;
+        }
+
+        // Windows 会悄悄吃掉末尾的空格和点，"Foo." 实际落到 "Foo"，干脆不接受
+        if (name != name.Trim() || name.EndsWith('.'))
+        {
+            return false;
+        }
+
+        return name.IndexOfAny(Path.GetInvalidFileNameChars()) < 0;
+    }
+
+    private static bool IsTempFolder(string path) =>
+        Path.GetFileName(path).StartsWith(TempFolderPrefix, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>清理上次安装中断留下的临时文件夹（否则 UMM 可能把旧版本备份也当成 mod 加载）。</summary>
+    private void CleanupTempFolders()
+    {
+        try
+        {
+            foreach (var dir in Directory.GetDirectories(ModsPath, TempFolderPrefix + "*"))
+            {
+                TryDeleteDirectory(dir);
+            }
+        }
+        catch
+        {
+            // 忽略
+        }
+    }
+
+    private static void Restore(List<(string Original, string Backup)> moved)
+    {
+        foreach (var (original, backup) in moved)
+        {
+            try
+            {
+                Directory.Move(backup, original);
+            }
+            catch
+            {
+                AppPaths.AppendDebugLog($"[install] 还原旧版本失败：{backup} → {original}");
+            }
+        }
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, true);
+            }
+        }
+        catch
+        {
+            // 忽略
         }
     }
 
@@ -245,6 +405,11 @@ public sealed class ModService
 
         foreach (var directory in Directory.GetDirectories(ModsPath))
         {
+            if (IsTempFolder(directory))
+            {
+                continue;
+            }
+
             var infoPath = Path.Combine(directory, "Info.json");
             if (!File.Exists(infoPath))
             {
@@ -319,13 +484,20 @@ public sealed class ModService
                 var buffer = new byte[81920];
                 long read = 0;
                 int count;
+                var lastPercent = -1;
                 while ((count = await source.ReadAsync(buffer, ct)) > 0)
                 {
                     await target.WriteAsync(buffer.AsMemory(0, count), ct);
                     read += count;
                     if (total > 0)
                     {
-                        progress?.Report((int)(read * 100 / total));
+                        // 只在百分比变化时报告：每 80KB 刷一次界面纯属浪费
+                        var percent = (int)(read * 100 / total);
+                        if (percent != lastPercent)
+                        {
+                            lastPercent = percent;
+                            progress?.Report(percent);
+                        }
                     }
                 }
             }
@@ -422,14 +594,26 @@ public sealed class ModService
 
     public InstallResult Uninstall(InstalledMod mod)
     {
+        if (SteamGameLocator.IsGameRunning())
+        {
+            return new InstallResult(false, SteamGameLocator.GameRunningMessage);
+        }
+
         try
         {
             if (Directory.Exists(mod.FolderPath))
             {
-                Directory.Delete(mod.FolderPath, true);
+                // 先整个改名挪开再删：文件被占用时改名就会失败，不会删出"半个 mod"
+                var trash = Path.Combine(ModsPath, $"{TempFolderPrefix}del-{Guid.NewGuid():N}");
+                Directory.Move(mod.FolderPath, trash);
+                TryDeleteDirectory(trash);
             }
 
             return new InstallResult(true, $"已卸载 {mod.DisplayName}。", mod.Id);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return new InstallResult(false, $"卸载失败：文件被占用（{ex.Message}）。请关闭打开着该文件夹的程序后重试。");
         }
         catch (Exception ex)
         {
@@ -439,6 +623,12 @@ public sealed class ModService
 
     public InstallResult SetEnabled(InstalledMod mod, bool enabled)
     {
+        // 游戏运行时 UMM 退出前会把自己内存里的启用状态写回 Params.xml，这里改了也会被覆盖
+        if (SteamGameLocator.IsGameRunning())
+        {
+            return new InstallResult(false, SteamGameLocator.GameRunningMessage);
+        }
+
         try
         {
             Params.SetEnabled(mod.Id, enabled);
