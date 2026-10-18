@@ -3,6 +3,7 @@
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
       xmlns:svc="clr-namespace:AdofaiModManager.Services"
+      xmlns:controls="clr-namespace:AdofaiModManager.Controls"
       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
       Title="在线 Mod">
     <Grid Margin="28">
@@ -307,7 +308,9 @@
                         <TextBlock x:Name="InstallStatusText" Margin="0,6,0,0" FontSize="12" Opacity="0.7" />
 
                         <TextBlock Margin="0,20,0,6" FontSize="16" FontWeight="SemiBold" Text="简介" />
-                        <TextBlock Opacity="0.85" Text="{Binding Description}" TextWrapping="Wrap" />
+                        <controls:MarkdownViewer Markdown="{Binding Description}"
+                                                 Opacity="0.9"
+                                                 EmptyText="暂无介绍" />
 
                         <TextBlock Margin="0,20,0,6" FontSize="16" FontWeight="SemiBold" Text="版本与文件" />
                         <ItemsControl ItemsSource="{Binding Versions}">
@@ -321,11 +324,10 @@
                                             CornerRadius="8">
                                         <StackPanel>
                                             <TextBlock FontWeight="SemiBold" Text="{Binding VersionId}" />
-                                            <TextBlock Margin="0,4,0,0"
-                                                       FontSize="12"
-                                                       Opacity="0.6"
-                                                       Text="{Binding Changelog}"
-                                                       TextWrapping="Wrap" />
+                                            <controls:MarkdownViewer Margin="0,4,0,0"
+                                                                     DocumentFontSize="12.5"
+                                                                     Markdown="{Binding Changelog}"
+                                                                     Opacity="0.7" />
                                             <ItemsControl Margin="0,6,0,0" ItemsSource="{Binding Files}">
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate>
