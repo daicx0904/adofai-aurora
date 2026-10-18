@@ -87,7 +87,8 @@ public partial class App : Application
                 MainWindow,
                 $"操作时发生了意外错误：{args.Exception.Message}\n\n"
                 + $"详细信息已记录到日志（{AppPaths.CrashLogPath}），"
-                + "可在「设置 → 诊断与反馈 → 导出诊断包」里导出后反馈。",
+                + "可在「设置 → 诊断与反馈 → 导出诊断包」里导出后反馈。\n\n"
+                + "如果界面变得不正常，建议重启一次 Aurora。",
                 "Aurora",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);

@@ -93,6 +93,12 @@ public static class ImageLoader
 
         // 失败只记"什么时候失败的"，过几分钟还会重试：
         // 原来直接把 null 写进内存缓存，网络临时抖一下，图标就一直空着直到重启
+        if (Failures.Count > 2000)
+        {
+            // 长期挂着大量 mod 时别让这张表无限涨
+            Failures.Clear();
+        }
+
         Failures[url] = DateTime.UtcNow;
         return null;
     }

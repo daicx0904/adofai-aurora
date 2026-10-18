@@ -61,8 +61,12 @@ public sealed class SiteInstaller(AdofaiToolsClient client, ModService modServic
         AppServices.InstallMap.Set(detail.Id, result.ModId);
 
         var gitHub = detail.HomepageUrl ?? detail.SourceUrl;
+
+        // 只在"还没有手动绑定"时才记：用户手填的更新源就是他的明确选择，
+        // 不能每次从资源站重装都拿主页地址把它冲掉
         if (!string.IsNullOrWhiteSpace(gitHub) &&
-            gitHub.Contains("github.com", StringComparison.OrdinalIgnoreCase))
+            gitHub.Contains("github.com", StringComparison.OrdinalIgnoreCase) &&
+            AppServices.UpdateSources.GetOverride(result.ModId) is null)
         {
             AppServices.UpdateSources.SetOverride(result.ModId, gitHub);
         }

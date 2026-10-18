@@ -103,18 +103,19 @@ public static class AppServices
         Updates = new UpdateCenter();
         Favorites = new FavoritesStore();
 
-        // 游戏目录：没设置过、或当前这个明显不如自动检测的结果时，换成更好的那个
-        // （机器上可能有旧的游戏备份，靠打分区分）
+        // 游戏目录：只在"没设置过 / 设置的那个已经不可用"时才自动填。
+        // 以前是"自动检测打分更高就覆盖"，会把用户明确选定的目录顶掉 —— 用户可能
+        // 故意指向另一份带 mod 的游戏副本，这种选择不该被自动改。
         var configured = Settings.Settings.GamePath;
         var best = GameLocator.FindBest();
 
-        var configuredScore = string.IsNullOrWhiteSpace(configured) || !Directory.Exists(configured)
-            ? int.MinValue
-            : GameLocator.Score(configured!);
+        var configuredUsable = !string.IsNullOrWhiteSpace(configured)
+            && Directory.Exists(configured)
+            && File.Exists(Path.Combine(configured!, SteamGameLocator.GameExeName));
 
         if (best is not null &&
-            !string.Equals(best, configured, StringComparison.OrdinalIgnoreCase) &&
-            GameLocator.Score(best) > configuredScore)
+            !configuredUsable &&
+            !string.Equals(best, configured, StringComparison.OrdinalIgnoreCase))
         {
             Settings.Settings.GamePath = best;
             Settings.Save();

@@ -324,7 +324,7 @@ public sealed class ModService
         return slash < 0 ? path : path[(slash + 1)..];
     }
 
-    /// <summary>能不能直接当作 Mods 下的一个文件夹名（不含路径、不是 . / ..、没有非法字符）。</summary>
+    /// <summary>能不能直接当作 Mods 下的一个文件夹名（不含路径、不是 . / ..、没有非法字符、不是保留名）。</summary>
     public static bool IsSafeFolderName(string name)
     {
         if (string.IsNullOrWhiteSpace(name) || name.Length > 128)
@@ -338,25 +338,102 @@ public sealed class ModService
             return false;
         }
 
-        return name.IndexOfAny(Path.GetInvalidFileNameChars()) < 0;
+        if (name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        {
+            return false;
+        }
+
+        // Windows 的保留设备名（CON / NUL / COM1 …）：带扩展名也一样不能用
+        var stem = name.Split('.')[0];
+        if (ReservedNames.Contains(stem))
+        {
+            return false;
+        }
+
+        return true;
     }
+
+    private static readonly HashSet<string> ReservedNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "CON", "PRN", "AUX", "NUL",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    };
 
     private static bool IsTempFolder(string path) =>
         Path.GetFileName(path).StartsWith(TempFolderPrefix, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>清理上次安装中断留下的临时文件夹（否则 UMM 可能把旧版本备份也当成 mod 加载）。</summary>
+    /// <summary>
+    /// 清理上次安装中断留下的临时文件夹。
+    ///
+    /// ⚠ 只有"解压暂存"和"待删除"可以直接删；**旧版本备份不能删** ——
+    /// 如果上次安装正好在"移走旧版 → 放入新版"之间被强杀 / 断电，
+    /// 那个备份就是这份 mod 唯一的副本，删掉等于把用户的 mod 弄丢了。
+    /// 这种情况要把它按 Info.json 里的 Id 恢复回 Mods 下。
+    /// </summary>
     private void CleanupTempFolders()
     {
         try
         {
             foreach (var dir in Directory.GetDirectories(ModsPath, TempFolderPrefix + "*"))
             {
+                var name = Path.GetFileName(dir);
+
+                if (name.StartsWith(TempFolderPrefix + "old-", StringComparison.OrdinalIgnoreCase))
+                {
+                    RecoverOldBackup(dir);
+                    continue;
+                }
+
                 TryDeleteDirectory(dir);
             }
         }
         catch
         {
             // 忽略
+        }
+    }
+
+    /// <summary>把中断安装时留下的旧版本备份恢复回 Mods 下（能恢复就恢复，恢复不了先留着）。</summary>
+    private void RecoverOldBackup(string backupDir)
+    {
+        try
+        {
+            var infoPath = Path.Combine(backupDir, "Info.json");
+            if (!File.Exists(infoPath))
+            {
+                // 连 Info.json 都没有，不可能是有效备份
+                TryDeleteDirectory(backupDir);
+                return;
+            }
+
+            ModInfoJson? info;
+            using (var stream = File.OpenRead(infoPath))
+            {
+                info = JsonSerializer.Deserialize<ModInfoJson>(stream, JsonOptions);
+            }
+
+            var id = info?.Id;
+            if (string.IsNullOrWhiteSpace(id) || !IsSafeFolderName(id!))
+            {
+                TryDeleteDirectory(backupDir);
+                return;
+            }
+
+            var target = Path.Combine(ModsPath, id!);
+            if (Directory.Exists(target))
+            {
+                // 已经有正常版本了，这份备份没用了
+                TryDeleteDirectory(backupDir);
+                return;
+            }
+
+            Directory.Move(backupDir, target);
+            AppPaths.AppendDebugLog($"[install] 已恢复上次中断安装留下的旧版本：{id}");
+        }
+        catch
+        {
+            // 恢复不了就留着，别删
         }
     }
 

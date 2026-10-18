@@ -194,17 +194,35 @@ public sealed class LoaderService
         try
         {
             var removed = new List<string>();
+            var kept = new List<string>();
 
+            // 只删"确实是 Aurora 写的"文件：
+            // 有用户用 BepInEx 等其它加载器，它们也用 winhttp.dll / doorstop_config.ini，
+            // 一律删掉会把别人的加载器搞坏。
             if (File.Exists(DoorstopConfigPath))
             {
-                File.Delete(DoorstopConfigPath);
-                removed.Add("doorstop_config.ini");
+                if (DoorstopConfigLooksLikeOurs())
+                {
+                    File.Delete(DoorstopConfigPath);
+                    removed.Add("doorstop_config.ini");
+                }
+                else
+                {
+                    kept.Add("doorstop_config.ini（不是 Aurora 写的）");
+                }
             }
 
             if (File.Exists(WinhttpPath))
             {
-                File.Delete(WinhttpPath);
-                removed.Add("winhttp.dll");
+                if (WinhttpLooksLikeOurs())
+                {
+                    File.Delete(WinhttpPath);
+                    removed.Add("winhttp.dll");
+                }
+                else
+                {
+                    kept.Add("winhttp.dll（不是 Aurora 装的）");
+                }
             }
 
             var backup = WinhttpPath + ".amm-backup";
@@ -224,6 +242,11 @@ public sealed class LoaderService
                 ? "没有找到需要卸载的加载器文件。"
                 : "已卸载：" + string.Join("、", removed);
 
+            if (kept.Count > 0)
+            {
+                message += "\n以下文件不是 Aurora 装的，已保留：" + string.Join("、", kept);
+            }
+
             var status = Detect();
             if (status.LegacyBackups.Length > 0)
             {
@@ -237,6 +260,52 @@ public sealed class LoaderService
         {
             return new InstallResult(false, $"卸载失败：{ex.Message}");
         }
+    }
+
+    /// <summary>doorstop_config.ini 是不是 Aurora 写的（内容里会指向 UnityModManager）。</summary>
+    private bool DoorstopConfigLooksLikeOurs()
+    {
+        try
+        {
+            return File.ReadAllText(DoorstopConfigPath)
+                .Contains("UnityModManager", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            // 读不了就当不是我们的（宁可留着）
+            return false;
+        }
+    }
+
+    /// <summary>winhttp.dll 是不是 Aurora 部署的那份（和内置的逐字节比较）。</summary>
+    private bool WinhttpLooksLikeOurs()
+    {
+        try
+        {
+            var bundled = Path.Combine(AppContext.BaseDirectory, "Resources", "UmmLoader");
+
+            foreach (var name in new[] { "winhttp_x64.dll", "winhttp_x86.dll" })
+            {
+                var candidate = Path.Combine(bundled, name);
+                if (File.Exists(candidate) && FilesEqual(candidate, WinhttpPath))
+                {
+                    return true;
+                }
+            }
+        }
+        catch
+        {
+            // 判断不了就当不是我们的（宁可留着）
+        }
+
+        return false;
+    }
+
+    private static bool FilesEqual(string a, string b)
+    {
+        var left = File.ReadAllBytes(a);
+        var right = File.ReadAllBytes(b);
+        return left.Length == right.Length && left.AsSpan().SequenceEqual(right);
     }
 
     public void LaunchGame()

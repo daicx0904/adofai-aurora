@@ -187,7 +187,8 @@ public static class AppPaths
             Directory.CreateDirectory(dir);
         }
 
-        var temp = path + ".tmp";
+        // 临时文件名带 GUID：两个写者并发时不会互相踩
+        var temp = $"{path}.{Guid.NewGuid():N}.tmp";
         File.WriteAllText(temp, contents);
         File.Move(temp, path, true);
     }
