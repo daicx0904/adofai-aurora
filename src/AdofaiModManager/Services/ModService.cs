@@ -213,14 +213,37 @@ public sealed class ModService
                 }
             }
 
-            // ③ 新版本就位
+            // ③ 覆盖安装：先把旧版本的内容放回去，再用新包覆盖。
+            //    以前是"挪走旧目录 → 把新包改名就位"，旧目录里 mod 自己写进去的
+            //    配置（各种 json / 子文件夹）会一起消失，只保住了 Settings.xml。
+            //    现在保留旧目录的全部内容，只覆盖新包里带的文件。
             try
             {
-                Directory.Move(staging, targetDir);
+                Directory.CreateDirectory(targetDir);
+
+                // 多份重复文件夹时，优先用"名字正好等于 Id"的那份作为基础
+                var baseFolder = moved
+                    .FirstOrDefault(m => string.Equals(m.Original, targetDir, StringComparison.OrdinalIgnoreCase))
+                    .Backup;
+
+                if (string.IsNullOrEmpty(baseFolder))
+                {
+                    baseFolder = moved.Count > 0 ? moved[0].Backup : null;
+                }
+
+                if (!string.IsNullOrEmpty(baseFolder) && Directory.Exists(baseFolder))
+                {
+                    OverlayDirectory(baseFolder!, targetDir);
+                }
+
+                OverlayDirectory(staging, targetDir);
+                TryDeleteDirectory(staging);
                 staging = null;
             }
             catch
             {
+                // 复制到一半失败：清掉可能只写了一半的目录，再还原旧版本
+                TryDeleteDirectory(targetDir);
                 Restore(moved);
                 throw;
             }
@@ -434,6 +457,45 @@ public sealed class ModService
         catch
         {
             // 恢复不了就留着，别删
+        }
+    }
+
+    /// <summary>
+    /// 把 source 里的文件覆盖复制到 target，**保留 target 里多出来的文件**。
+    /// 用来做"覆盖安装"：mod 常把自己的配置写在自己的文件夹里，
+    /// 如果直接换成"只有新包内容"的目录，配置就一起没了。
+    /// </summary>
+    private static void OverlayDirectory(string source, string target)
+    {
+        var sourceRoot = Path.GetFullPath(source) + Path.DirectorySeparatorChar;
+        var targetRoot = Path.GetFullPath(target) + Path.DirectorySeparatorChar;
+
+        Directory.CreateDirectory(target);
+
+        // 空目录也建出来（有些 mod 靠目录存在来判断）
+        foreach (var dir in Directory.EnumerateDirectories(source, "*", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(sourceRoot, dir);
+            var destination = Path.GetFullPath(Path.Combine(targetRoot, relative));
+
+            if (destination.StartsWith(targetRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                Directory.CreateDirectory(destination);
+            }
+        }
+
+        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(sourceRoot, file);
+            var destination = Path.GetFullPath(Path.Combine(targetRoot, relative));
+
+            if (!destination.StartsWith(targetRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                continue; // 防目录穿越
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            File.Copy(file, destination, overwrite: true);
         }
     }
 

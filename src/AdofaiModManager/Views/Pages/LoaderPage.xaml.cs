@@ -79,6 +79,16 @@ public partial class LoaderPage : Page
             lines.Add("本地内核包：" + string.Join("、", kernels.Select(k => $"{k.Version}({k.Source})")));
         }
 
+        // 内置内核比已部署的新时要明确提示：
+        // 以前只拿"资源站版本"和已部署版本比，而资源站上的内核归站长维护、不一定跟着更新，
+        // 于是软件自己升级了内置内核也不会提示。
+        if (bundled is not null && deployed is not null &&
+            KernelService.CompareVersions(bundled.Version, deployed) > 0)
+        {
+            lines.Add($"⚠ 内置内核 {bundled.Version} 比已部署的 {deployed} 新："
+                      + "点「安装 / 修复加载器」→「使用内置内核」即可更新。");
+        }
+
         if (status.IsInstalled)
         {
             StateText.Text = "✓ 加载器已安装（DoorstopProxy）";
@@ -199,37 +209,66 @@ public partial class LoaderPage : Page
             return;
         }
 
-        var client = BuildClient(out var error);
-        if (client is null)
-        {
-            Report(false, error);
-            return;
-        }
+        // 站点不可用（没填 key / 连不上）时，仍然可以用内置内核做比较
+        var client = BuildClient(out _);
 
         var kernel = new KernelService(loader);
         SetBusy(true);
 
         try
         {
-            var current = kernel.GetDeployedVersion() ?? kernel.GetBundled()?.Version;
+            var current = kernel.GetDeployedVersion();
+            var bundled = kernel.GetBundled();
 
-            Report(true, "正在从 ADOFAITools 检查内核更新…");
-            var site = await KernelBootstrapper.FindLatestSiteKernelAsync(client);
+            Report(true, "正在检查内核更新…");
 
-            if (site is null)
+            // 资源站上的内核归站长维护，不一定会跟着软件一起更新；
+            // 所以这里同时比较「站点版本」和「内置版本」，取更高的那个。
+            // 没有 API key / 站点连不上时，也能只靠内置内核给出判断。
+            (string VersionId, string FileId)? site = null;
+            if (client is not null)
             {
-                Report(false, "ADOFAITools 上没有找到 UnityModManager。");
+                try
+                {
+                    site = await KernelBootstrapper.FindLatestSiteKernelAsync(client);
+                }
+                catch (AdofaiToolsException)
+                {
+                    // 站点不可用：继续用内置内核比
+                }
+            }
+
+            var siteVersion = site?.VersionId;
+            var bundledVersion = bundled?.Version;
+
+            var bestVersion = siteVersion;
+            var bestSource = "ADOFAITools";
+            var useBundled = false;
+
+            if (bundledVersion is not null &&
+                (siteVersion is null || KernelService.CompareVersions(bundledVersion, siteVersion) > 0))
+            {
+                bestVersion = bundledVersion;
+                bestSource = "内置内核";
+                useBundled = true;
+            }
+
+            if (bestVersion is null)
+            {
+                Report(false, "拿不到内核版本信息（站点不可用，内置内核也缺失）。");
                 return;
             }
 
-            if (current is not null && KernelService.CompareVersions(site.Value.VersionId, current) <= 0)
+            var summary = $"站点 {siteVersion ?? "无"}　·　内置 {bundledVersion ?? "无"}　·　已部署 {current ?? "未部署"}";
+
+            if (current is not null && KernelService.CompareVersions(bestVersion, current) <= 0)
             {
-                Report(true, $"内核已是最新：当前 {current}，ADOFAITools 最新 {site.Value.VersionId}。");
+                Report(true, $"内核已是最新（{summary}）。");
                 return;
             }
 
             var confirm = System.Windows.MessageBox.Show(
-                $"ADOFAITools 有更新的内核 {site.Value.VersionId}（当前：{current ?? "未部署"}）。\n\n是否下载并更新？\n（升级前会自动备份当前内核，可回滚）",
+                $"{bestSource}有更新的内核 {bestVersion}（当前：{current ?? "未部署"}）。\n\n是否更新？\n（升级前会自动备份当前内核，可回滚）",
                 "内核更新",
                 System.Windows.MessageBoxButton.YesNo,
                 System.Windows.MessageBoxImage.Question);
@@ -239,15 +278,23 @@ public partial class LoaderPage : Page
                 return;
             }
 
-            var intent = await client.CreateToolDownloadIntentAsync(site.Value.FileId);
-            var (imported, message) = await kernel.ImportAsync(intent.Url, site.Value.VersionId);
-            if (imported is null)
+            if (useBundled)
             {
-                Report(false, message);
-                return;
+                // 用内置的：不需要下载
+                Report(new KernelBootstrapper(loader).InstallBundled());
             }
+            else
+            {
+                var intent = await client!.CreateToolDownloadIntentAsync(site!.Value.FileId);
+                var (imported, message) = await kernel.ImportAsync(intent.Url, site.Value.VersionId);
+                if (imported is null)
+                {
+                    Report(false, message);
+                    return;
+                }
 
-            Report(kernel.Deploy(imported));
+                Report(kernel.Deploy(imported));
+            }
         }
         catch (AdofaiToolsException ex)
         {
