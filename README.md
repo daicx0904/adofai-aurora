@@ -1,11 +1,21 @@
-# Aurora
+# <center>Aurora</center>
 
-《冰与火之舞》（A Dance of Fire and Ice）的 Windows Mod 管理器。
+**<center>《冰与火之舞》（A Dance of Fire and Ice）的 Windows Mod 管理器。</center>**
 
+<p align="center">
+  | <a href="../README.md">简体中文</a> |
+  <a href="i18n/README.en-US.md">English (US)</a> |
+</p>
+
+<br/>
 Aurora 将多个来源的 Mod 集中到同一个界面，方便浏览、搜索、安装和检查更新，同时提供本地 Mod 管理和 UnityModManager 加载器维护功能。界面以中文为主，默认连接 ADOFAI Tools，也支持 modrift、TUF、modlist 和兼容接口的自定义站点。
 
-> 项目原名 ADOFAI Mod Manager（AMM），从 v0.1.6 起更名为 Aurora，以避免与另一个同名工具混淆。
->
+<br/>
+
+> [!IMPORTANT]
+> 项目原名 ADOFAI Mod Manager（AMM），自 `v0.1.6` 起更名为 Aurora，以避免与另一个同名工具混淆。
+
+> [!WARNING]
 > 本项目是第三方工具，与 7th Beat Games、UnityModManager 官方及各 Mod 资源站没有隶属关系。
 
 ## 功能
@@ -17,10 +27,10 @@ Aurora 将多个来源的 Mod 集中到同一个界面，方便浏览、搜索�
 - 查看 Mod 介绍和版本，安装指定版本
 - 识别已安装和可更新的 Mod
 - 显示来源信息及原站页面链接
-- 安装前校验下载内容，避免将网页等错误内容当作压缩包
+- 下载内容校验
 - 标注需要 MelonLoader 的 Mod；目前不支持这类 Mod 的自动安装，也不安装 MelonLoader 加载器
 
-### 已安装 Mod
+### 管理已安装 Mod
 
 - 启用、禁用、更新、卸载和打开 Mod 文件夹
 - 从本地 ZIP 安装尚未收录到资源站、自己制作或从其他渠道获得的 Mod
@@ -54,9 +64,9 @@ Aurora 将多个来源的 Mod 集中到同一个界面，方便浏览、搜索�
 
 前往 [Releases](../../releases) 下载：
 
-| 版本 | 说明 |
-| --- | --- |
-| 安装包 | 可选择安装范围和目录，并创建快捷方式 |
+| 版本       | 说明                                  |
+| ---------- | ------------------------------------- |
+| 安装包     | 可选择安装范围和目录，并创建快捷方式  |
 | 绿色版 ZIP | 解压后运行 `Aurora.exe`，不写入注册表 |
 
 配置、日志和缓存保存在用户目录中，不写入程序安装目录，安装到 `Program Files` 也可以正常使用。
@@ -71,13 +81,13 @@ Aurora 将多个来源的 Mod 集中到同一个界面，方便浏览、搜索�
 
 默认站点和自定义站点在“设置”中配置，日常浏览时在“在线 Mod”页面切换来源。
 
-| 来源 | 说明 |
-| --- | --- |
-| [ADOFAI Tools](https://adofaitools.top/) | 默认来源，需要 API key，可在站点“个人中心”创建 |
-| [modrift](https://modrift.org) | 无需 API key，提供公开 API |
-| [TUF（The Universal Forums）](https://tuforums.com/mods) | 无需 API key，提供 Mod 目录和下载服务 |
-| [modlist](https://modlist.org) | 无需 API key，提供公开 API |
-| 自定义站点 | 实现兼容接口后，可在“设置 → 自定义站点”中添加 |
+| 来源                                                     | 说明                                           |
+| -------------------------------------------------------- | ---------------------------------------------- |
+| [ADOFAI Tools](https://adofaitools.top/)                 | 默认来源，需要 API key，可在站点“个人中心”创建 |
+| [modrift](https://modrift.org)                           | 无需 API key，提供公开 API                     |
+| [TUF（The Universal Forums）](https://tuforums.com/mods) | 无需 API key，提供 Mod 目录和下载服务          |
+| [modlist](https://modlist.org)                           | 无需 API key，提供公开 API                     |
+| 自定义站点                                               | 实现兼容接口后，可在“设置 → 自定义站点”中添加  |
 
 Aurora 不绑定单一资源站。来自各站点的内容会注明出处，并提供对应的原站页面链接。
 
